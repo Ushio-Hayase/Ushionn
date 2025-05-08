@@ -4,8 +4,6 @@ project(tesron LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CUDA_STANDARD 20)
 
-add_subdirectory(kernels)
-add_subdirectory(src/main)
+add_subdirectory(src/tensor)
 
-target_include_directories(kernels PUBLIC kernels)
-target_link_libraries(main kernels)
+target_include_directories(tensor PUBLIC include)

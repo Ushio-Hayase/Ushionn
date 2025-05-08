@@ -1,5 +1,5 @@
 {
-    "cmake.sourceDirectory": "D:/_Study/DLModelFromScratch",
+    "cmake.sourceDirectory": "D:/_Study/AIModelFromScratch",
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.associations": {
         "vector": "cpp",
