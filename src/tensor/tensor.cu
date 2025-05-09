@@ -1,125 +1,218 @@
 #pragma once
 
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <vector>
 
-namespace tesron
-{
+#include "constant.cu"
 
-/**
- * #TODO 1024개의 스레드까지만 제대로 작동
- */
+template <typename T, typename S>
+__global__ void MultiplyCUDA1D(const T* src, const S target, T* out)
+{
+    const int tid = Grid1DTID(blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z);
+    out[tid] = src[tid] * target;
+}
+
+template <typename T, typename S>
+__global__ void MultiplyCUDA2D(const T* src, const S target, T* out, const size_t row, const size_t col)
+{
+    const int tid = Grid2DTID(blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, threadIdx.z);
+    const int trow = BDim_Y * blockIdx.y + threadIdx.y;
+    const int tcol = BDim_X * blockIdx.x + threadIdx.x;
+    if (trow >= row || tcol >= col) return;
+    out[tid] = src[tid] * target;
+}
+
+template <typename T, typename S>
+__global__ void MultiplyCUDA3D(const T* src, const S target, T* out, const size_t dimX, const size_t dimY,
+                               const size_t dimZ)
+{
+    const int tid = Grid3DTID(blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
+    const size_t tDimZ = BDim_Z * blockIdx.z + threadIdx.x;
+    const size_t tDimY = BDim_Y * blockIdx.y + threadIdx.y;
+    const size_t tDimX = BDim_X * blockIdx.x + threadIdx.x;
+
+    if (tDimX >= dimX || tDimY >= dimY || tDimZ >= dimZ) return;
+    out[tid] = src[tid] * target;
+}
+
 template <typename T>
 __global__ void AddCUDA1D(const T* src, const T* target, T* out)
 {
-    const int id = threadIdx.x;
-    out[id] = src[id] + target[id];
+    const int tid = Grid1DTID(blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z);
+    out[tid] = src[tid] + target[tid];
 }
 
 template <typename T>
-__global__ void AddCUDA2D(const T** src, const T** target, T** out)
+__global__ void AddCUDA2D(const T* src, const T* target, T* out, const size_t row, const size_t col)
+{
+    const int tid = Grid2DTID(blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, threadIdx.z);
+    const int trow = BDim_Y * blockIdx.y + threadIdx.y;
+    const int tcol = BDim_X * blockIdx.x + threadIdx.x;
+    if (trow >= row || tcol >= col) return;
+    out[tid] = src[tid] + target[tid];
+}
+
+template <typename T>
+__global__ void AddCUDA3D(const T* src, const T* target, T* out, const size_t dimX, const size_t dimY,
+                          const size_t dimZ)
+{
+    const int tid = Grid3DTID(blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
+    const size_t tDimZ = BDim_Z * blockIdx.z + threadIdx.x;
+    const size_t tDimY = BDim_Y * blockIdx.y + threadIdx.y;
+    const size_t tDimX = BDim_X * blockIdx.x + threadIdx.x;
+
+    if (tDimX >= dimX || tDimY >= dimY || tDimZ >= dimZ) return;
+    out[tid] = src[tid] + target[tid];
+}
+
+template <typename T>
+tesron::Tensor<T>::Tensor(std::initializer_list<size_t> dims)
+    : device_(Device::CPU), dimSize_(sizeof(dims)), dims_(dims)
 {
 }
 
 template <typename T>
-__global__ void AddCUDA3D(const T** src, const T** target, T** out)
+tesron::Tensor<T>::Tensor(const T* arr, size_t size)
 {
+    dataSize_ = size;
+    memcpy(data_.get(), arr, size * sizeof(T));
 }
 
-enum class Device
+template <typename T>
+void tesron::Tensor<T>::Cuda()
 {
-    CPU,
-    CUDA
-};
+    if (device_ == Device::CUDA) return;
+    T* ptr = nullptr;
+    cudaMalloc(&ptr, dataSize_);
+    auto errCode = cudaMemcpy(ptr, data_, dataSize_, cudaMemcpyHostToDevice);
+
+    if (errCode != cudaSuccess)
+        std::cerr << "Error : failed to copy Tensor from host to device, Error Code : " << errCode << std::endl;
+    data_.reset(ptr);
+}
 
 template <typename T>
-class Tensor
+void tesron::Tensor<T>::Cpu()
 {
-   public:
-    /// @brief CPU에 배치된 아무것도 존재하지 않는 빈 텐서를 생성합니다.
-    Tensor() : useCuda_(false), dimSize_(0) {}
+    if (device_ == Device::CPU) return;
+    T* ptr = nullptr;
+    ptr = new T[dataSize_];
+    auto errCode = cudaMemcpy(ptr, data_, dataSize_, cudaMemcpyDeviceToHost);
 
-    /// @brief 주어진 차원 개수와 크기에 맞는 텐서 생성
-    /// @param dims 텐서 크기 이니셜라이저 리스트
-    Tensor(std::initializer_list<size_t> dims) : useCuda_(false), dimSize_(sizeof(dims)), dims_(dims) {}
+    if (errCode != cudaSuccess)
+        std::cerr << "Error : failed to copy Tensor from device to host, Error Code : " << errCode << std::endl;
+    cudaFree(data_.get());
 
-    /// @brief 주어진 배열의 크기로 초기화
-    /// @param arr 배열의 포인터
-    /// @param size 배열의 크기
-    Tensor(const T* arr, size_t size)
+    data_.release();
+    data_.reset(ptr);
+}
+
+template <typename T>
+Device tesron::Tensor<T>::getDevice() const
+{
+    return device_;
+}
+
+template <typename T, typename S>
+void tesron::Tensor<T>::Multiply(const S x)
+{
+    if (device_ == Device::CUDA)
     {
-        dataSize_ = size;
-        memcpy(data_.get(), arr, size * sizeof(T));
-    }
-
-    virtual ~Tensor() = default;
-
-    /// @brief 텐서을 CUDA로 이동
-    void Cuda()
-    {
-        if (device_ == Device == CUDA) return;
-        T* ptr = nullptr;
-        cudaMalloc(&ptr, dataSize_);
-        auto errCode = cudaMemcpy(ptr, data_, dataSize_, cudaMemcpyHostToDevice);
-
-        if (errCode != cudaSuccess)
-            std::cerr << "Error : failed to copy Tensor from host to device, Error Code : " << errCode << std::endl;
-        data_.reset(ptr);
-    }
-
-    /// @brief 텐서를 CPU로 이동
-    void Cpu()
-    {
-        if (device_ == Device::CPU) return;
-        T* ptr = nullptr;
-        ptr = new T[dataSize_];
-        cudaMemcpy(ptr, data_, dataSize_, cudaMemcpyDeviceToHost);
-
-        if (errCode != cudaSuccess)
-            std::cerr << "Error : failed to copy Tensor from device to host, Error Code : " << errCode << std::endl;
-        cudaFree(data_.get());
-
-        data_.release();
-        data_.reset(ptr);
-    }
-
-    /// @brief 현재 텐서가 위치한 디바이스 반환
-    /// @return 디바이스 열거형
-    Device getDevice() const { return device_; }
-
-    /// @brief 행렬 덧셈 수행
-    /// @param x 더할 텐서
-    void Add(const Tensor& x)
-    {
-        if (device_ == Device::CUDA && x.getDevice() == Device::CUDA)
+        if (dimSize_ == 1 && dataSize_ <= 1024)
         {
-            if (dimSize_ == 1)
-                AddCUDA1D<T><<<(1, 1, 1), (dataSize_, 1, 1)>>>(data_.get(), x.Data().get(), data_.get());
-            else if (dimSize_ == 2)
-                AddCUDA2D<T> < < < (1, 1, 1)
+            MultiplyCUDA1D<T, S><<<dim3(1, 1, 1), dim3(dims_[0], 1, 1)>>>(data_.get(), x, data_.get());
         }
-        else if (device_ == Device::CPU && x.getDevice() == Device::CPU)
+        else if (dimSize_ == 1 && dataSize_ > 1024)
+            MultiplyCUDA1D<T, S>
+                <<<dim3(ceil(dataSize_ / 1024.f), 1, 1), dim3(1024, 1, 1)>>>(data_.get(), x, data_.get());
+        else if (dimSize_ == 2 && dataSize_ <= 1024)
+            MultiplyCUDA2D<T, S>
+                <<<dim3(1, 1, 1), dim3(dims_[1], dims_[0], 1)>>>(data_.get(), x, data_.get(), dims_[0], dims_[1]);
+        else if (dimSize_ == 2 && dataSize_ > 1024)
         {
-            if (dimSize_ == 1)
-                for (int i = 0; i < dataSize_; ++i) data_.get()[i] += x.Data().get()[i];
+            MultiplyCUDA2D<T, S>
+                <<<dim3(ceil(dims_[1] / 1024.f), ceil(dims_[0] / 1024.f), 1), dim3(dims_[1], dims_[0], 1)>>>(
+                    data_.get(), x, data_.get(), dims_[0], dims_[1]);
+        }
+        else if (dimSize_ == 3 && dataSize_ <= 1024)
+        {
+            MultiplyCUDA3D<T, S><<<dim3(1, 1, 1), dim3(dims_[2], dims_[1], dims_[0])>>>(data_.get(), x, data_.get(),
+                                                                                        dims_[0], dims_[1], dims_[2]);
+        }
+        else if (dimSize_ == 3 && dataSize_ > 1024)
+        {
+            MultiplyCUDA3D<T, S>
+                <<<dim3(ceil(dims_[2] / 1024.f), ceil(dims_[1] / 1024.f), ceil(dims_[0] / 1024.f)),
+                   dim3(dims_[2], dims_[1], dims_[0])>>>(data_.get(), x, data_.get(), dims_[0], dims_[1], dims_[2]);
+                }
+        else
+        {
+            throw "Tensor dim length must be less than 4";
         }
     }
+    else if (device_ == Device::CPU)
+        for (int i = 0; i < dataSize_; ++i) data_.get()[i] *= x;
+}
 
-    void Multiply();
-    void Matmul();
-    void Transpose();
-    void Inverse();
+template <typename T>
+void tesron::Tensor<T>::Add(const Tensor& x)
+{
+    if (device_ == Device::CUDA && x.getDevice() == Device::CUDA)
+    {
+        if (dimSize_ == 1 && dataSize_ <= 1024)
+        {
+            AddCUDA1D<T><<<dim3(1, 1, 1), dim3(dims_[0], 1, 1)>>>(data_.get(), x.Data().get(), data_.get());
+        }
+        else if (dimSize_ == 1 && dataSize_ > 1024)
 
-    std::weak_ptr<T> Data() const;
+            AddCUDA1D<T>
+                <<<dim3(ceil(dataSize_ / 1024.f), 1, 1), dim3(1024, 1, 1)>>>(data_.get(), x.Data().get(), data_.get());
+        else if (dimSize_ == 2 && dataSize_ <= 1024)
+            AddCUDA2D<T><<<dim3(1, 1, 1), dim3(dims_[1], dims_[0], 1)>>>(data_.get(), x.Data().get(), data_.get(),
+                                                                         dims_[0], dims_[1]);
+        else if (dimSize_ == 2 && dataSize_ > 1024)
+            AddCUDA2D<T><<<dim3(ceil(dims_[1] / 1024.f), ceil(dims_[0] / 1024.f), 1), dim3(dims_[1], dims_[0], 1)>>>(
+                data_.get(), x.Data().get(), data_.get(), dims_[0], dims_[1]);
+        else if (dimSize_ == 3 && dataSize_ <= 1024)
+            AddCUDA3D<T><<<dim3(1, 1, 1), dim3(dims_[2], dims_[1], dims_[0])>>>(
+                data_.get(), x.Data().get(), data_.get(), dims_[0], dims_[1], dims_[2]);
+        else if (dimSize_ == 3 && dataSize_ > 1024)
+            AddCUDA3D<T><<<dim3(ceil(dims_[2] / 1024.f), ceil(dims_[1] / 1024.f), ceil(dims_[0] / 1024.f)),
+                           dim3(dims_[2], dims_[1], dims_[0])>>>(data_.get(), x.Data().get(), data_.get(), dims_[0],
+                                                                 dims_[1], dims_[2]);
+        else
+            throw "Tensor dim length must be less than 4";
+    }
+    else if (device_ == Device::CPU && x.getDevice() == Device::CPU)
+        for (int i = 0; i < dataSize_; ++i) data_.get()[i] += x.Data().get()[i];
+}
 
-   private:
-    std::unique_ptr<T> data_;  // 메인 데이터 포인터
-    size_t dataSize_;          // 데이터 크기
+template <typename T>
+T tesron::Tensor<T>::Index(std::initializer_list<size_t> indexList)
+{
+    std::vector<size_t> tmp(indexList);
+    if (tmp.size() != dimSize_) throw "given index list do not match dimention size";
 
-    std::vector<size_t> dims_;  // 차원 순서
-    size_t dimSize_;            // 차원 개수
+    int idx = 0;
 
-    Device device_;
-};
-}  // namespace tesron
+    for (int i = 0; i < dimSize_; ++i)
+    {
+        idx += tmp[i] * dims_[i];
+    }
+
+    return data_.get()[idx];
+}
+
+template <typename T>
+bool tesron::Tensor<T>::setDims(std::initializer_list<size_t> dimList)
+{
+    std::vector<size_t> tmp(dimList);
+    int size = 0;
+    for (const auto& dim : tmp) size += dim;
+    if (size != dataSize_) return false;
+    dims_.assign(dimList);
+    dimSize_ = tmp.size();
+    return true;
+}

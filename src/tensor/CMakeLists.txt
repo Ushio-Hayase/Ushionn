@@ -1,1 +1,2 @@
-add_library(tensor tensor.cpp tensor.cu)
+add_library(tensor tensor.h)
+
