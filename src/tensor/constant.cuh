@@ -10,6 +10,11 @@
 
 #define NUM_THREAD_IN_BLOCK (BDim_X * BDim_Y * BDim_Z)
 
+constexpr int blockSize1D = 1024;
+constexpr int blockSize2D = 32;
+constexpr int blockSize3DX = 16;
+constexpr int blockSize3DYZ = 8;
+
 __device__ __forceinline__ int TIdInBlock(int TId_X, int TId_Y, int TId_Z)
 {
     return TId_Z * (BDim_Y * BDim_X) + TId_Y * BDim_X + TId_X;
