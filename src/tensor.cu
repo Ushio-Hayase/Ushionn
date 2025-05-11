@@ -119,7 +119,7 @@ void ushionn::Tensor::AllocCPUArray(void* ptr, size_t size)
 }
 
 #ifdef USE_CUDNN
-#else
+#else  // #TODO 나중에 수정
 template <typename T, typename S>
 __global__ void MultiplyCUDA1D(const T* src, const S target, T* out, const size_t dimX)
 {

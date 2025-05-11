@@ -1,4 +1,4 @@
-add_library(ushionn tensor.cu layer.cu)
+add_library(ushionn tensor.cu layers.cu)
 
 target_include_directories(ushionn
     PRIVATE
