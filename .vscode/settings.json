@@ -1,7 +1,9 @@
 {
-    "cmake.sourceDirectory": "D:/_Study/AIModelFromScratch",
+    "cmake.sourceDirectory": "D:/_Study/Ushionn",
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.associations": {
+        "*.cuh": "cuda-cpp",
+        "*.cu": "cuda-cpp",
         "vector": "cpp",
         "array": "cpp",
         "compare": "cpp",
@@ -78,7 +80,13 @@
         "unordered_set": "cpp",
         "variant": "cpp",
         "xhash": "cpp",
-        "xtree": "cpp"
+        "xtree": "cpp",
+        "codecvt": "cpp",
+        "filesystem": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "ranges": "cpp",
+        "valarray": "cpp"
     },
     "C_Cpp.default.compilerPath": "cl.exe"
 }

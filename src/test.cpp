@@ -10,7 +10,7 @@ TEST(TensorGeneraotrFunc, ArrayCopy)
     int* defaultArr = new int[10000];
     for (int i = 0; i < arrSize; ++i) defaultArr[i] = i;
 
-    tesron::Tensor<int> test(defaultArr, arrSize);
+    ushionn::Tensor test(defaultArr, arrSize);
     test.setDims({arrSize});
 
     for (size_t i = 0; i < arrSize; ++i)
@@ -38,8 +38,8 @@ TEST(TensorAddFunc, AddUnder1024CPU)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
-    tesron::Tensor<int> test2(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test2(defaultArr, arrSize);
 
     test1.setDims({arrSize});
     test2.setDims({arrSize});
@@ -91,8 +91,8 @@ TEST(TensorAddFunc, AddUnder1024CUDA)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
-    tesron::Tensor<int> test2(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test2(defaultArr, arrSize);
 
     test1.setDims({arrSize});
     test2.setDims({arrSize});
@@ -160,8 +160,8 @@ TEST(TensorAddFunc, AddOver1024CPU)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
-    tesron::Tensor<int> test2(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test2(defaultArr, arrSize);
 
     test1.setDims({arrSize});
     test2.setDims({arrSize});
@@ -213,8 +213,8 @@ TEST(TensorAddFunc, AddOver1024CUDA)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
-    tesron::Tensor<int> test2(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test2(defaultArr, arrSize);
 
     test1.setDims({arrSize});
     test2.setDims({arrSize});
@@ -279,8 +279,8 @@ TEST(TensorAddFunc, AddTimeTestCPU)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
-    tesron::Tensor<int> test2(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test2(defaultArr, arrSize);
     test1.setDims({arrSize / 8 / 8, 8, 8});
     test2.setDims({arrSize / 8 / 8, 8, 8});
 
@@ -304,8 +304,8 @@ TEST(TensorAddFunc, AddTimeTestCUDA)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
-    tesron::Tensor<int> test2(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test2(defaultArr, arrSize);
 
     test1.setDims({arrSize / 8 / 8, 8, 8});
     test2.setDims({arrSize / 8 / 8, 8, 8});
@@ -334,7 +334,7 @@ TEST(TensorMultiplyFunc, MultiplyUnder1024CPU)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
 
     test1.setDims({arrSize});
 
@@ -383,7 +383,7 @@ TEST(TensorMultiplyFunc, MultiplyUnder1024CUDA)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
 
     test1.setDims({arrSize});
 
@@ -444,7 +444,7 @@ TEST(TensorMultiplyFunc, MultiplyOver1024CPU)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
 
     test1.setDims({arrSize});
 
@@ -493,7 +493,7 @@ TEST(TensorMultiplyFunc, MultiplyOver1024CUDA)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
 
     test1.setDims({arrSize});
 
@@ -550,7 +550,7 @@ TEST(TensorMultiplyFunc, MultiplyTimeTestCPU)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
 
     test1.setDims({arrSize / 8 / 8, 8, 8});
 
@@ -574,7 +574,7 @@ TEST(TensorMultiplyFunc, MultiplyTimeTestCUDA)
         for (int j = 0; j < arrSize / 8 / 8; ++j) arr3D[i][j] = defaultArr + i * 8 * 8 + j * 8;
     }
 
-    tesron::Tensor<int> test1(defaultArr, arrSize);
+    ushionn::Tensor<int> test1(defaultArr, arrSize);
 
     test1.setDims({arrSize / 8 / 8, 8, 8});
 
