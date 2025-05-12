@@ -5,8 +5,9 @@ target_include_directories(ushionn
     ${CUDNN_INCLUDE_DIR}
     ${CUDNN_FRONTEND_INCLUDE_DIR})
 
-add_executable(tensorTest test.cpp)
-target_link_libraries(tensorTest PRIVATE tensor ${CUDNN_LIBRARY} ${CUDA_LIBRARIES} gtest_main gtest)
+
+add_executable(tensorTest tensor_test.cpp)
+target_link_libraries(tensorTest PRIVATE ushionn ${CUDNN_LIBRARY} ${CUDA_LIBRARIES} gtest_main gtest)
 
 
 

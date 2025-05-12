@@ -55,7 +55,7 @@ enum class Device
 class Tensor
 {
    public:
-    Tensor() = delete;
+    Tensor() = default;
 
     /// @brief 주어진 벡터로 초기화
     /// @tparam T 데이터 타입
@@ -85,6 +85,11 @@ class Tensor
 
     bool SetDims(std::initializer_list<size_t>);
 
+    void Add(const Tensor&);
+
+    template <typename S>
+    void Mul(const S);
+
    private:
     size_t GetDTypeSize();
 
@@ -93,9 +98,15 @@ class Tensor
     /// @param size 할당받은 크기
     void AllocCPUArray(void* ptr, size_t size);
 
+    template <typename T>
+    void AddImpl(const Tensor& x);
+
+    template <typename T>
+    void MulImpl(const T x);
+
    private:
-    std::unique_ptr<void> data_;  // 메인 데이터 포인터
-    size_t data_size_;            // 데이터 크기
+    std::unique_ptr<void, decltype(&std::free)> data_;  // 메인 데이터 포인터
+    size_t data_size_;                                  // 데이터 크기
 
     std::vector<size_t> shape_;  // 차원 순서
     size_t shape_size_;          // 차원 개수
