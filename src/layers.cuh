@@ -41,6 +41,8 @@ class Layer
     void AttributeSetComputeDataType(fe::graph::Attributes<T>& attr);
 
    protected:
+    std::shared_ptr<fe::graph::Tensor_attributes> input_;
+    std::shared_ptr<fe::graph::Tensor_attributes> output_;
     std::shared_ptr<fe::graph::Tensor_attributes> weights_;
     std::shared_ptr<fe::graph::Tensor_attributes> bias_;
     std::shared_ptr<fe::graph::Tensor_attributes> weights_grads_;
@@ -78,11 +80,13 @@ class Layer
     Layer& operator=(const Layer&) = delete;
     virtual ~Layer();
 
-    virtual graph::Tensor_attributes Forward(const graph::Tensor_attributes& input);
-    virtual graph::Tensor_attributes Backward(const graph::Tensor_attributes& grad_output);
+    virtual void Initialize();
 
-    std::pair<const graph::Tensor_attributes&, const graph::Tensor_attributes&> Parameters() const;
-    std::pair<const graph::Tensor_attributes&, const graph::Tensor_attributes&> Gradients() const;
+    virtual Tensor Forward(const Tensor& input);
+    virtual Tensor Backward(const Tensor& grad_output);
+
+    std::pair<const Tensor&, const Tensor&> Parameters() const;
+    std::pair<const Tensor&, const Tensor&> Gradients() const;
 
     virtual void To(Device);
 
@@ -90,18 +94,20 @@ class Layer
     virtual bool Load(const std::string&);
 
    private:
-    std::unique_ptr<graph::Tensor_attributes> weights_;
-    std::unique_ptr<graph::Tensor_attributes> bias_;
-    std::unique_ptr<graph::Tensor_attributes> weights_grads_;
-    std::unique_ptr<graph::Tensor_attributes> bias_grads_;
+    std::unique_ptr<Tensor> weights_;
+    std::unique_ptr<Tensor> bias_;
+    std::unique_ptr<Tensor> weights_grads_;
+    std::unique_ptr<Tensor> bias_grads_;
     ActivationType activation_;
     Device device_;
 };
 
 class DenseLayer : public Layer
 {
-    graph::Tensor_attributes Forward(const graph::Tensor_attributes& input) override;
-    graph::Tensor_attributes Backward(const graph::Tensor_attributes& grad_output) override;
+    void Initialize() override;
+
+    Tensor Forward(const Tensor& input) override;
+    Tensor Backward(const Tensor& grad_output) override;
 
     void To(Device device) override;
 

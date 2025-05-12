@@ -207,8 +207,8 @@ void ushionn::Tensor<T>::Multiply(const S x)
         else if (dimSize_ == 2 && dataSize_ > 1024)
         {
             MultiplyCUDA2D<T, S>
-                <<<dim3(ceil(dims_[1] / static_cast<float>(blockSize2D)),
-                        ceil(dims_[0] / static_cast<float>(blockSize2D))),
+                <<<dim3(ceil(dims_[1] / static_cast<float>(kblockSize2D)),
+                        ceil(dims_[0] / static_cast<float>(kblockSize2D))),
                    dim3(blockSize2D, blockSize2D, 1)> > >(data_.get(), x, data_.get(), dims_[1], dims_[0]);
         }
         else if (dimSize_ == 3 && dataSize_ <= 1024)
@@ -218,9 +218,9 @@ void ushionn::Tensor<T>::Multiply(const S x)
         }
         else if (dimSize_ == 3 && dataSize_ > 1024)
         {
-            MultiplyCUDA3D<T, S><<<dim3(ceil(dims_[2] / static_cast<float>(blockSize3DX)),
-                                        ceil(dims_[1] / static_cast<float>(blockSize3DYZ)),
-                                        ceil(dims_[0] / static_cast<float>(blockSize3DYZ))),
+            MultiplyCUDA3D<T, S><<<dim3(ceil(dims_[2] / static_cast<float>(kblockSize3DX)),
+                                        ceil(dims_[1] / static_cast<float>(kblockSize3DYZ)),
+                                        ceil(dims_[0] / static_cast<float>(kblockSize3DYZ))),
                                    dim3(blockSize3DX, blockSize3DYZ, blockSize3DYZ)> > >(data_.get(), x, data_.get(),
                                                                                          dims_[2], dims_[1], dims_[0]);
         }
@@ -257,10 +257,10 @@ void ushionn::Tensor<T>::Add(const Tensor& x)
         }
         else if (dimSize_ == 2 && dataSize_ > 1024)
         {
-            AddCUDA2D<T>
-                <<<dim3(ceil(dims_[1] / static_cast<float>(blockSize2D)),
-                        ceil(dims_[0] / static_cast<float>(blockSize2D))),
-                   dim3(blockSize2D, blockSize2D, 1)> > >(data_.get(), x.data_.get(), data_.get(), dims_[1], dims_[0]);
+            AddCUDA2D<T><<<dim3(ceil(dims_[1] / static_cast<float>(kblockSize2D)),
+                                ceil(dims_[0] / static_cast<float>(kblockSize2D))),
+                           dim3(kblockSize2D, kblockSize2D, 1)> > >(data_.get(), x.data_.get(), data_.get(), dims_[1],
+                                                                    dims_[0]);
         }
         else if (dimSize_ == 3 && dataSize_ <= 1024)
         {
@@ -269,10 +269,10 @@ void ushionn::Tensor<T>::Add(const Tensor& x)
         }
         else if (dimSize_ == 3 && dataSize_ > 1024)
         {
-            AddCUDA3D<T><<<dim3(ceil(dims_[2] / static_cast<float>(blockSize3DX)),
-                                ceil(dims_[1] / static_cast<float>(blockSize3DYZ)),
-                                ceil(dims_[0] / static_cast<float>(blockSize3DYZ))),
-                           dim3(blockSize3DX, blockSize3DYZ, blockSize3DYZ)> > >(
+            AddCUDA3D<T><<<dim3(ceil(dims_[2] / static_cast<float>(kblockSize3DX)),
+                                ceil(dims_[1] / static_cast<float>(kblockSize3DYZ)),
+                                ceil(dims_[0] / static_cast<float>(kblockSize3DYZ))),
+                           dim3(kblockSize3DX, kblockSize3DYZ, kblockSize3DYZ)> > >(
                 data_.get(), x.data_.get(), data_.get(), dims_[2], dims_[1], dims_[0]);
         }
         else
