@@ -1,1 +1,1 @@
-#include "model.cuh"
+#include "model.h"

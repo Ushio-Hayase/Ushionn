@@ -3,8 +3,8 @@
 #include <memory>
 #include <string>
 
-#include "activation.cuh"
-#include "tensor.cuh"
+#include "activation.h"
+#include "tensor.h"
 
 #ifdef USE_CUDNN
 

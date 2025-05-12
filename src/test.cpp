@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "tensor.cuh"
+#include "tensor.h"
 
 TEST(TensorGeneraotrFunc, ArrayCopy)
 {

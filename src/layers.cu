@@ -1,4 +1,4 @@
-#include "layers.cuh"
+#include "layers.h"
 
 namespace ushionn
 {

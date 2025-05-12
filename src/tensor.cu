@@ -5,8 +5,8 @@
 #include <memory>
 #include <vector>
 
-#include "constant.cuh"
-#include "tensor.cuh"
+#include "constant.h"
+#include "tensor.h"
 
 template <typename T>
 ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const std::vector<T>& data)
