@@ -47,7 +47,7 @@ class Layer
     std::shared_ptr<fe::graph::Tensor_attributes> bias_;
     std::shared_ptr<fe::graph::Tensor_attributes> weights_grads_;
     std::shared_ptr<fe::graph::Tensor_attributes> bias_grads_;
-    ActivationType activation_;
+    ActivationFunc activation_;
     Device device_;
     DataType dtype_;
 };
