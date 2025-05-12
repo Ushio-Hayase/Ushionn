@@ -13,8 +13,8 @@ ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const std::vector<
     : dtype_(TypeToEnum<T>::value),
       shape_(shape),
       data_(new T[data.size()]),
-      dataSize_(data.size()),
-      shapeSize_(shapes.size())
+      data_size_(data.size()),
+      shape_size_(shapes.size())
 {
     std::copy(data.begin(), data.end(), static_cast<T*>(data_.get()));
 }
@@ -24,13 +24,13 @@ void ushionn::Tensor::CUDA()
     if (device_ == Device::CUDA) return;
     void* ptr = nullptr;
 
-    cudaMalloc(&ptr, dataSize_ * GetDTypeSize());
-    auto errCode = cudaMemcpy(ptr, data_.get(), dataSize_ * GetDTypeSize(), cudaMemcpyHostToDevice);
+    cudaMalloc(&ptr, data_size_ * GetDTypeSize());
+    auto err_code = cudaMemcpy(ptr, data_.get(), data_size_ * GetDTypeSize(), cudaMemcpyHostToDevice);
     device_ = Device::CUDA;
 
-    if (errCode != cudaSuccess)
+    if (err_code != cudaSuccess)
     {
-        std::cerr << "Error : failed to copy Tensor from host to device, Error Code : " << errCode << std::endl;
+        std::cerr << "Error : failed to copy Tensor from host to device, Error Code : " << err_code << std::endl;
         cudaFree(ptr);
     }
     else
@@ -44,13 +44,13 @@ void ushionn::Tensor::CPU()
     if (device_ == Device::CPU) return;
     void* ptr = nullptr;
 
-    AllocCPUArray(ptr, dataSize_);
-    auto errCode = cudaMemcpy(ptr, data_.get(), dataSize_ * GetDTypeSize(), cudaMemcpyDeviceToHost);
+    AllocCPUArray(ptr, data_size_);
+    auto err_code = cudaMemcpy(ptr, data_.get(), data_size_ * GetDTypeSize(), cudaMemcpyDeviceToHost);
     device_ = Device::CPU;
 
-    if (errCode != cudaSuccess)
+    if (err_code != cudaSuccess)
     {
-        std::cerr << "Error : failed to copy Tensor from device to host, Error Code : " << errCode << std::endl;
+        std::cerr << "Error : failed to copy Tensor from device to host, Error Code : " << err_code << std::endl;
     }
     else
     {
@@ -92,9 +92,9 @@ bool ushionn::Tensor::SetDims(std::initializer_list<size_t> dimList)
     std::vector<size_t> tmp(dimList);
     int size = 1;
     for (const auto& dim : tmp) size *= dim;
-    if (size != shapeSize_) return false;
+    if (size != shape_size_) return false;
     shape_.assign(dimList);
-    shapeSize_ = tmp.size();
+    shape_size_ = tmp.size();
     return true;
 }
 

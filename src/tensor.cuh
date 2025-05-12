@@ -95,10 +95,10 @@ class Tensor
 
    private:
     std::unique_ptr<void> data_;  // 메인 데이터 포인터
-    size_t dataSize_;             // 데이터 크기
+    size_t data_size_;            // 데이터 크기
 
     std::vector<size_t> shape_;  // 차원 순서
-    size_t shapeSize_;           // 차원 개수
+    size_t shape_size_;          // 차원 개수
 
     Device device_;
     DataType dtype_;

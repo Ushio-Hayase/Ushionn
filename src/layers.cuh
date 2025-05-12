@@ -10,6 +10,8 @@
 
 #include <cudnn_frontend.h>
 
+namespace fe = cudnn_frontend;
+
 namespace ushionn
 {
 class Layer
@@ -19,33 +21,44 @@ class Layer
     Layer& operator=(const Layer&) = delete;
     virtual ~Layer();
 
-    virtual Tensor Forward(const Tensor& input);
-    virtual Tensor Backward(const Tensor& grad_output);
+    virtual void Initialize();
 
-    virtual Tensor Forward(const cudnn_frontend::Tensor& input);
-    virtual Tensor Backward(const cudnn_frontend::Tensor& grad_output);
+    virtual std::shared_ptr<fe::graph::Tensor_attributes> Forward(
+        const std::shared_ptr<fe::graph::Tensor_attributes> input, fe::graph::Graph& graph);
+    virtual std::shared_ptr<fe::graph::Tensor_attributes> Backward(
+        const std::shared_ptr<fe::graph::Tensor_attributes> grad_output, fe::graph::Graph& graph);
 
-    std::pair<const cudnn_frontend::Tensor&, const cudnn_frontend::Tensor&> Parameters() const;
-    std::pair<const cudnn_frontend::Tensor&, const cudnn_frontend::Tensor&> Gradients() const;
+    std::pair<const fe::graph::Tensor_attributes&, const fe::graph::Tensor_attributes&> Parameters() const;
+    std::pair<const fe::graph::Tensor_attributes&, const fe::graph::Tensor_attributes&> Gradients() const;
 
     virtual void To(Device);
 
     virtual bool Save(const std::string&);
     virtual bool Load(const std::string&);
 
-   private:
-    std::unique_ptr<cudnn_frontend::Tensor> weights_;
-    std::unique_ptr<cudnn_frontend::Tensor> bias_;
-    std::unique_ptr<cudnn_frontend::Tensor> weights_grads_;
-    std::unique_ptr<cudnn_frontend::Tensor> bias_grads_;
+   protected:
+    template <typename T>
+    void AttributeSetComputeDataType(fe::graph::Attributes<T>& attr);
+
+   protected:
+    std::shared_ptr<fe::graph::Tensor_attributes> weights_;
+    std::shared_ptr<fe::graph::Tensor_attributes> bias_;
+    std::shared_ptr<fe::graph::Tensor_attributes> weights_grads_;
+    std::shared_ptr<fe::graph::Tensor_attributes> bias_grads_;
     ActivationType activation_;
     Device device_;
+    DataType dtype_;
 };
 
 class DenseLayer : public Layer
 {
-    Tensor Forward(const Tensor& input) override;
-    Tensor Backward(const Tensor& grad_output) override;
+   public:
+    void Initialize() override;
+
+    std::shared_ptr<fe::graph::Tensor_attributes> Forward(const std::shared_ptr<fe::graph::Tensor_attributes>,
+                                                          fe::graph::Graph& graph) override;
+    std::shared_ptr<fe::graph::Tensor_attributes> Backward(
+        const std::shared_ptr<fe::graph::Tensor_attributes> grad_output, fe::graph::Graph& graph) override;
 
     void To(Device device) override;
 
@@ -65,11 +78,11 @@ class Layer
     Layer& operator=(const Layer&) = delete;
     virtual ~Layer();
 
-    virtual Tensor Forward(const Tensor& input);
-    virtual Tensor Backward(const Tensor& grad_output);
+    virtual graph::Tensor_attributes Forward(const graph::Tensor_attributes& input);
+    virtual graph::Tensor_attributes Backward(const graph::Tensor_attributes& grad_output);
 
-    std::pair<const Tensor&, const Tensor&> Parameters() const;
-    std::pair<const Tensor&, const Tensor&> Gradients() const;
+    std::pair<const graph::Tensor_attributes&, const graph::Tensor_attributes&> Parameters() const;
+    std::pair<const graph::Tensor_attributes&, const graph::Tensor_attributes&> Gradients() const;
 
     virtual void To(Device);
 
@@ -77,18 +90,18 @@ class Layer
     virtual bool Load(const std::string&);
 
    private:
-    std::unique_ptr<Tensor> weights_;
-    std::unique_ptr<Tensor> bias_;
-    std::unique_ptr<Tensor> weights_grads_;
-    std::unique_ptr<Tensor> bias_grads_;
+    std::unique_ptr<graph::Tensor_attributes> weights_;
+    std::unique_ptr<graph::Tensor_attributes> bias_;
+    std::unique_ptr<graph::Tensor_attributes> weights_grads_;
+    std::unique_ptr<graph::Tensor_attributes> bias_grads_;
     ActivationType activation_;
     Device device_;
 };
 
 class DenseLayer : public Layer
 {
-    Tensor Forward(const Tensor& input) override;
-    Tensor Backward(const Tensor& grad_output) override;
+    graph::Tensor_attributes Forward(const graph::Tensor_attributes& input) override;
+    graph::Tensor_attributes Backward(const graph::Tensor_attributes& grad_output) override;
 
     void To(Device device) override;
 
