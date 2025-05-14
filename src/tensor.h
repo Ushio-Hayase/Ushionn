@@ -1,12 +1,14 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+
 namespace ushionn
 {
 enum class DataType
 {
     FLOAT32,
     FLOAT64,
-    INT32
 };
 
 template <typename T>
@@ -22,11 +24,6 @@ struct TypeToEnum<double>
 {
     static constexpr DataType value = DataType::FLOAT64;
 };
-template <>
-struct TypeToEnum<int>
-{
-    static constexpr DataType value = DataType::INT32;
-};
 
 template <DataType DType>
 struct EnumToType;
@@ -40,11 +37,6 @@ struct EnumToType<DataType::FLOAT64>
 {
     using type = double;
 };
-template <>
-struct EnumToType<DataType::INT32>
-{
-    using type = int;
-};
 
 enum class Device
 {
@@ -55,23 +47,29 @@ enum class Device
 class Tensor
 {
    public:
-    Tensor() = default;
+    Tensor() = delete;
 
     /// @brief 주어진 벡터로 초기화
-    /// @tparam T 데이터 타입
     /// @param shapes 데이터 차원 모양
     /// @param data 데이터 벡터
-    template <typename T>
-    Tensor(std::initializer_list<size_t> shapes, const std::vector<T>& data);
+    Tensor(std::initializer_list<size_t> shapes, const std::vector<float>& data);
+
+    /// @brief 주어진 벡터로 초기화
+    /// @param shapes 데이터 차원 모양
+    /// @param data 데이터 벡터
+    Tensor(std::initializer_list<size_t> shapes, const std::vector<double>& data);
 
     /// @brief 주어진 배열의 크기로 초기화
-    /// @tparam T 데이터 형식
     /// @param arr 배열의 포인터
     /// @param size 배열의 크기
-    template <typename T>
-    Tensor(std::initializer_list<size_t> shapes, const T* arr, size_t size);
+    Tensor(std::initializer_list<size_t> shapes, const float* arr, size_t size);
 
-    virtual ~Tensor();
+    /// @brief 주어진 배열의 크기로 초기화
+    /// @param arr 배열의 포인터
+    /// @param size 배열의 크기
+    Tensor(std::initializer_list<size_t> shapes, const double* arr, size_t size);
+
+    ~Tensor();
 
     void CUDA();
     void CPU();
@@ -96,13 +94,13 @@ class Tensor
     /// @brief 메인 메모리에 dtype_의 지정한 크기의 배열을 할당합니다.
     /// @param ptr 할당받고 참조할 포인터
     /// @param size 할당받은 크기
-    void AllocCPUArray(void* ptr, size_t size);
+    void AllocCPUArray(void** ptr, size_t size);
 
     template <typename T>
     void AddImpl(const Tensor& x);
 
-    template <typename T>
-    void MulImpl(const T x);
+    template <typename T, typename S>
+    void MulImpl(const S x);
 
    private:
     std::unique_ptr<void, decltype(&std::free)> data_;  // 메인 데이터 포인터

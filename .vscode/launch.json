@@ -1,13 +1,6 @@
 {
     "configurations": [
         {
-            "name": "CUDA C++: Launch",
-            "type": "cuda-gdbserver",
-            "request": "launch",
-            "program": "${command:cmake.launchTargetPath}",
-            "preLaunchTask": "CMake: build"
-        },
-        {
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",

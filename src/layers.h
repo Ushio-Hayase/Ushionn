@@ -28,8 +28,10 @@ class Layer
     virtual std::shared_ptr<fe::graph::Tensor_attributes> Backward(
         const std::shared_ptr<fe::graph::Tensor_attributes> grad_output, fe::graph::Graph& graph);
 
-    std::pair<const fe::graph::Tensor_attributes&, const fe::graph::Tensor_attributes&> Parameters() const;
-    std::pair<const fe::graph::Tensor_attributes&, const fe::graph::Tensor_attributes&> Gradients() const;
+    std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>> Parameters()
+        const;
+    std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>> Gradients()
+        const;
 
     virtual void To(Device);
 
@@ -38,7 +40,7 @@ class Layer
 
    protected:
     template <typename T>
-    void AttributeSetComputeDataType(fe::graph::Attributes<T>& attr);
+    void AttributeSetComputeDataType(T& attr);
 
    protected:
     std::shared_ptr<fe::graph::Tensor_attributes> input_;
@@ -47,7 +49,7 @@ class Layer
     std::shared_ptr<fe::graph::Tensor_attributes> bias_;
     std::shared_ptr<fe::graph::Tensor_attributes> weights_grads_;
     std::shared_ptr<fe::graph::Tensor_attributes> bias_grads_;
-    ActivationFunc activation_;
+    Activation activation_;
     Device device_;
     DataType dtype_;
 };
@@ -55,13 +57,25 @@ class Layer
 class DenseLayer : public Layer
 {
    public:
+    /// @brief 레이어를 초기화합니다.
     void Initialize() override;
 
-    std::shared_ptr<fe::graph::Tensor_attributes> Forward(const std::shared_ptr<fe::graph::Tensor_attributes>,
+    /// @brief 순전파를 실행합니다
+    /// @param input 입력 텐서
+    /// @param graph cuDNN 그래프
+    /// @return 출력텐서
+    std::shared_ptr<fe::graph::Tensor_attributes> Forward(const std::shared_ptr<fe::graph::Tensor_attributes> input,
                                                           fe::graph::Graph& graph) override;
+
+    /// @brief 역전파를 실행합니다
+    /// @param grad_output 뒤쪽의 기울기 텐서
+    /// @param graph cuDNN 그래프
+    /// @return 앞 쪽으로 갈 기울기 텐서
     std::shared_ptr<fe::graph::Tensor_attributes> Backward(
         const std::shared_ptr<fe::graph::Tensor_attributes> grad_output, fe::graph::Graph& graph) override;
 
+    /// @brief 객체의 저장 디바이스를 옮깁니다
+    /// @param device 옮길 디바이스
     void To(Device device) override;
 
     bool Save(const std::string& path) override;
@@ -98,7 +112,7 @@ class Layer
     std::unique_ptr<Tensor> bias_;
     std::unique_ptr<Tensor> weights_grads_;
     std::unique_ptr<Tensor> bias_grads_;
-    ActivationType activation_;
+    Activation activation_;
     Device device_;
 };
 

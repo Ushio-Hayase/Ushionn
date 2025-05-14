@@ -8,15 +8,53 @@
 #include "constant.h"
 #include "tensor.h"
 
-template <typename T>
-ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const std::vector<T>& data)
-    : dtype_(TypeToEnum<T>::value),
+ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const std::vector<float>& data)
+    : dtype_(DataType::FLOAT32),
       shape_(shapes),
-      data_(new T[data.size()]),
+      data_(std::malloc(sizeof(float) * data.size()), &std::free),
       data_size_(data.size()),
-      shape_size_(shapes.size())
+      shape_size_(shapes.size()),
+      device_(Device::CPU)
 {
-    std::copy(data.begin(), data.end(), static_cast<T*>(data_.get()));
+    std::copy(data.begin(), data.end(), static_cast<float*>(data_.get()));
+}
+
+ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const std::vector<double>& data)
+    : dtype_(DataType::FLOAT64),
+      shape_(shapes),
+      data_(std::malloc(sizeof(double) * data.size()), &std::free),
+      data_size_(data.size()),
+      shape_size_(shapes.size()),
+      device_(Device::CPU)
+{
+    std::copy(data.begin(), data.end(), static_cast<double*>(data_.get()));
+}
+
+ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const float* arr, size_t size)
+    : dtype_(DataType::FLOAT32),
+      shape_(shapes),
+      data_(std::malloc(sizeof(float) * size), &std::free),
+      data_size_(size),
+      shape_size_(shapes.size()),
+      device_(Device::CPU)
+{
+    std::memcpy(static_cast<float*>(data_.get()), arr, sizeof(float) * size);
+}
+
+ushionn::Tensor::Tensor(std::initializer_list<size_t> shapes, const double* arr, size_t size)
+    : dtype_(DataType::FLOAT64),
+      shape_(shapes),
+      data_(std::malloc(sizeof(double) * size), &std::free),
+      data_size_(size),
+      shape_size_(shapes.size()),
+      device_(Device::CPU)
+{
+    std::memcpy(static_cast<double*>(data_.get()), arr, sizeof(double) * size);
+}
+
+ushionn::Tensor::~Tensor()
+{
+    this->CPU();
 }
 
 void ushionn::Tensor::CUDA()
@@ -25,6 +63,7 @@ void ushionn::Tensor::CUDA()
     void* ptr = nullptr;
 
     cudaMalloc(&ptr, data_size_ * GetDTypeSize());
+
     auto err_code = cudaMemcpy(ptr, data_.get(), data_size_ * GetDTypeSize(), cudaMemcpyHostToDevice);
     device_ = Device::CUDA;
 
@@ -32,6 +71,7 @@ void ushionn::Tensor::CUDA()
     {
         std::cerr << "Error : failed to copy Tensor from host to device, Error Code : " << err_code << std::endl;
         cudaFree(ptr);
+        device_ = Device::CPU;
     }
     else
     {
@@ -42,21 +82,24 @@ void ushionn::Tensor::CUDA()
 void ushionn::Tensor::CPU()
 {
     if (device_ == Device::CPU) return;
-    void* ptr = nullptr;
+    void* old_ptr = data_.get();
+    void* new_ptr = nullptr;
 
-    AllocCPUArray(ptr, data_size_);
-    auto err_code = cudaMemcpy(ptr, data_.get(), data_size_ * GetDTypeSize(), cudaMemcpyDeviceToHost);
+    AllocCPUArray(&new_ptr, data_size_);
+
+    auto err_code = cudaMemcpy(new_ptr, old_ptr, data_size_ * GetDTypeSize(), cudaMemcpyDeviceToHost);
     device_ = Device::CPU;
 
     if (err_code != cudaSuccess)
     {
-        std::cerr << "Error : failed to copy Tensor from device to host, Error Code : " << err_code << std::endl;
+        std::cerr << "Error : failed to copy Tensor from device to host, Error Code : " << cudaGetErrorString(err_code)
+                  << std::endl;
     }
     else
     {
         cudaFree(data_.get());
         data_.release();
-        data_.reset(ptr);
+        data_.reset(new_ptr);
     }
 }
 
@@ -92,7 +135,7 @@ bool ushionn::Tensor::SetDims(std::initializer_list<size_t> dimList)
     std::vector<size_t> tmp(dimList);
     int size = 1;
     for (const auto& dim : tmp) size *= dim;
-    if (size != shape_size_) return false;
+    if (size != data_size_) return false;
     shape_.assign(dimList);
     shape_size_ = tmp.size();
     return true;
@@ -104,18 +147,14 @@ size_t ushionn::Tensor::GetDTypeSize()
         return sizeof(float);
     else if (dtype_ == DataType::FLOAT64)
         return sizeof(double);
-    else if (dtype_ == DataType::INT32)
-        return sizeof(int);
 }
 
-void ushionn::Tensor::AllocCPUArray(void* ptr, size_t size)
+void ushionn::Tensor::AllocCPUArray(void** ptr, size_t size)
 {
     if (dtype_ == DataType::FLOAT32)
-        ptr = new float[size];
+        *ptr = std::malloc(size * sizeof(float));
     else if (dtype_ == DataType::FLOAT64)
-        ptr = new double[size];
-    else if (dtype_ == DataType::INT32)
-        ptr = new int[size];
+        *ptr = std::malloc(size * sizeof(double));
 }
 
 template <typename T>
@@ -185,13 +224,12 @@ __global__ void AddCUDA3D(const T* src, const T* target, T* out, const size_t di
 template <typename S>
 void ushionn::Tensor::Mul(const S x)
 {
-    if (TypeToEnum<S>::value != dtype_)
+    if (dtype_ == DataType::FLOAT32)
     {
-        std::cerr << "Error : Tensor Mul operation must use same data type" << std::endl;
-        throw "Tensor Mul operation must use same data type";
+        MulImpl<float, S>(x);
     }
-
-    MulImpl<S>(x);
+    else if (dtype_ == DataType::FLOAT64)
+        MulImpl<double, S>(x);
 }
 
 void ushionn::Tensor::Add(const ushionn::Tensor& x)
@@ -200,8 +238,6 @@ void ushionn::Tensor::Add(const ushionn::Tensor& x)
         AddImpl<float>(x);
     else if (dtype_ == DataType::FLOAT64)
         AddImpl<double>(x);
-    else if (dtype_ == DataType::INT32)
-        AddImpl<int>(x);
 }
 
 template <typename T>
@@ -270,8 +306,8 @@ void ushionn::Tensor::AddImpl(const ushionn::Tensor& x)
     }
 }
 
-template <typename T>
-void ushionn::Tensor::MulImpl(const T x)
+template <typename T, typename S>
+void ushionn::Tensor::MulImpl(const S x)
 {
     if (device_ == Device::CUDA)
     {
@@ -321,3 +357,10 @@ void ushionn::Tensor::MulImpl(const T x)
         for (int i = 0; i < data_size_; ++i) static_cast<T*>(data_.get())[i] *= x;
     }
 }
+
+template int ushionn::Tensor::Index(std::initializer_list<size_t>);
+template float ushionn::Tensor::Index(std::initializer_list<size_t>);
+template double ushionn::Tensor::Index(std::initializer_list<size_t>);
+template void ushionn::Tensor::Mul(int);
+template void ushionn::Tensor::Mul(float);
+template void ushionn::Tensor::Mul(double);
