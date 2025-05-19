@@ -27,7 +27,7 @@ Tensor::Tensor(const std::vector<int64_t>& shape, const void* host_data_ptr, siz
     : shape_(shape), data_type_(data_type), is_virtual_(false), name_(name)
 {
     update_size_in_bytes_cache();
-    USHIONN_ASSERT(num_bytes == size_in_bytes_cache_, "Provided data size mismatch with tensor shape and data type.");
+    USHIONN_ASSERT(num_bytes == data_size_in_bytes_, "Provided data size mismatch with tensor shape and data type.");
 
     if (host_data_ptr && num_bytes > 0)
     {
@@ -41,8 +41,6 @@ Tensor::Tensor(const std::vector<int64_t>& shape, const void* host_data_ptr, siz
     }
 }
 
-// --- 복사 및 이동 시맨틱 구현 ---
-// (주의: 깊은 복사 시 GPU/CPU 데이터 모두 복사 및 상태 동기화 필요)
 Tensor::Tensor(const Tensor& other)
     : shape_(other.shape_),
       strides_(other.strides_),
@@ -51,30 +49,26 @@ Tensor::Tensor(const Tensor& other)
       is_virtual_(other.is_virtual_),
       data_location_(DataLocation::NONE),  // 복사본은 일단 NONE
       strides_dirty_(other.strides_dirty_),
-      size_in_bytes_cache_(other.size_in_bytes_cache_)
+      data_size_in_bytes_(other.data_size_in_bytes_)
 {
     if (is_virtual_) return;
 
     if (other.is_on_host())
     {
-        allocate_host_memory();  // 내부에서 data_location_ = DataLocation::HOST 설정
-        std::memcpy(h_data_ptr_.get(), other.get_host_ptr(), size_in_bytes_cache_);
+        allocate_host_memory(data_size_in_bytes_);  // 내부에서 data_location_ = DataLocation::HOST 설정
+        std::memcpy(h_data_ptr_.get(), other.get_host_ptr(), data_size_in_bytes_);
     }
     if (other.is_on_device())
     {
-        allocate_device_memory();  // 내부에서 data_location_ 업데이트
+        allocate_device_memory(data_size_in_bytes_);  // 내부에서 data_location_ 업데이트
         CUDA_CHECK(
-            cudaMemcpy(d_data_ptr_.get(), other.get_device_ptr(), size_in_bytes_cache_, cudaMemcpyDeviceToDevice));
+            cudaMemcpy(d_data_ptr_.get(), other.get_device_ptr(), data_size_in_bytes_, cudaMemcpyDeviceToDevice));
         // 원래 상태에 따라 data_location_ 조정
         if (is_on_host() && is_on_device())
-        {                                           // 양쪽에 복사되었다면
-            data_location_ = other.data_location_;  // 원본 상태를 따르거나, SYNCED로 강제
+        {
+            data_location_ = other.data_location_;
         }
     }
-    // 만약 other가 HOST_AHEAD 또는 DEVICE_AHEAD 였다면, 복사본도 해당 상태를 유지할지,
-    // 아니면 SYNCED 또는 각 위치만 있는 상태로 만들지 정책 결정 필요.
-    // 여기서는 간단히 각 위치에 데이터가 있으면 해당 상태로만 만듦.
-    // 필요시 to_host(), to_device()를 통해 원본과 동일한 최신 상태로 만들어 줄 수 있음.
 }
 
 Tensor& Tensor::operator=(const Tensor& other)
@@ -89,7 +83,7 @@ Tensor& Tensor::operator=(const Tensor& other)
     name_ = other.name_ + "_assigned_copy";
     is_virtual_ = other.is_virtual_;
     strides_dirty_ = other.strides_dirty_;
-    size_in_bytes_cache_ = other.size_in_bytes_cache_;
+    data_size_in_bytes_ = other.data_size_in_bytes_;
 
     // 기존 메모리 해제 (스마트 포인터가 자동으로 처리하지만 명시적으로 reset 가능)
     h_data_ptr_.reset();
@@ -100,14 +94,14 @@ Tensor& Tensor::operator=(const Tensor& other)
 
     if (other.is_on_host())
     {
-        allocate_host_memory();
-        std::memcpy(h_data_ptr_.get(), other.get_host_ptr(), size_in_bytes_cache_);
+        allocate_host_memory(data_size_in_bytes_);
+        std::memcpy(h_data_ptr_.get(), other.get_host_ptr(), data_size_in_bytes_);
     }
     if (other.is_on_device())
     {
-        allocate_device_memory();
+        allocate_device_memory(data_size_in_bytes_);
         CUDA_CHECK(
-            cudaMemcpy(d_data_ptr_.get(), other.get_device_ptr(), size_in_bytes_cache_, cudaMemcpyDeviceToDevice));
+            cudaMemcpy(d_data_ptr_.get(), other.get_device_ptr(), data_size_in_bytes_, cudaMemcpyDeviceToDevice));
         if (is_on_host() && is_on_device())
         {
             data_location_ = other.data_location_;
@@ -127,15 +121,15 @@ Tensor::Tensor(Tensor&& other) noexcept
       d_data_ptr_(std::move(other.d_data_ptr_)),
       data_location_(other.data_location_),
       strides_dirty_(other.strides_dirty_),
-      size_in_bytes_cache_(other.size_in_bytes_cache_)
+      data_size_in_bytes_(other.data_size_in_bytes_)
 {
     // 이동 후 other는 유효하지만 비어있는 상태로 만듦
     other.shape_.clear();
     other.strides_.clear();
     other.uid_ = 0;
-    other.is_virtual_ = true;  // 또는 다른 기본 상태
+    other.is_virtual_ = false;  // 또는 다른 기본 상태
     other.data_location_ = DataLocation::NONE;
-    other.size_in_bytes_cache_ = 0;
+    other.data_size_in_bytes_ = 0;
 }
 
 Tensor& Tensor::operator=(Tensor&& other) noexcept
@@ -152,14 +146,14 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept
     d_data_ptr_ = std::move(other.d_data_ptr_);
     data_location_ = other.data_location_;
     strides_dirty_ = other.strides_dirty_;
-    size_in_bytes_cache_ = other.size_in_bytes_cache_;
+    data_size_in_bytes_ = other.data_size_in_bytes_;
 
     other.shape_.clear();
     other.strides_.clear();
     other.uid_ = 0;
     other.is_virtual_ = true;
     other.data_location_ = DataLocation::NONE;
-    other.size_in_bytes_cache_ = 0;
+    other.data_size_in_bytes_ = 0;
 
     return *this;
 }
@@ -167,19 +161,12 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept
 // --- 데이터 위치 상태 확인 ---
 bool Tensor::is_on_host() const
 {
-    return data_location_ == DataLocation::HOST || data_location_ == DataLocation::HOST_DEVICE_SYNCED ||
-           data_location_ == DataLocation::HOST_AHEAD || data_location_ == DataLocation::DEVICE_AHEAD;
+    return data_location_ == DataLocation::HOST;
 }
 
 bool Tensor::is_on_device() const
 {
-    return data_location_ == DataLocation::DEVICE || data_location_ == DataLocation::HOST_DEVICE_SYNCED ||
-           data_location_ == DataLocation::HOST_AHEAD || data_location_ == DataLocation::DEVICE_AHEAD;
-}
-
-bool Tensor::is_synced() const
-{
-    return data_location_ == DataLocation::HOST_DEVICE_SYNCED;
+    return data_location_ == DataLocation::DEVICE;
 }
 
 // --- 데이터 접근 ---
@@ -194,8 +181,6 @@ void* Tensor::get_mutable_host_ptr()
             "allocate_host_memory().");
         return nullptr;  // 도달하지 않음
     }
-    // CPU 데이터 수정 시, GPU 데이터는 더 이상 최신이 아님 (만약 있었다면)
-    set_host_data_dirty();
     return h_data_ptr_.get();
 }
 
@@ -224,8 +209,6 @@ void* Tensor::get_mutable_device_ptr()
             "allocate_device_memory().");
         return nullptr;
     }
-    // GPU 데이터 수정 시, CPU 데이터는 더 이상 최신이 아님 (만약 있었다면)
-    set_device_data_dirty();
     return d_data_ptr_.get();
 }
 
@@ -243,7 +226,7 @@ const void* Tensor::get_device_ptr() const
 }
 
 // --- 메모리 할당 ---
-void Tensor::allocate_host_memory()
+void Tensor::allocate_host_memory(size_t bytes)
 {
     if (is_virtual_)
     {
@@ -252,20 +235,17 @@ void Tensor::allocate_host_memory()
     }
     if (!h_data_ptr_)
     {  // 아직 할당되지 않았을 때만
-        USHIONN_ASSERT(size_in_bytes_cache_ > 0, "Cannot allocate host memory for zero-sized tensor.");
-        h_data_ptr_.reset(new char[size_in_bytes_cache_]);  // HostDeleter가 관리
+        data_size_in_bytes_ = bytes;
+        USHIONN_ASSERT(data_size_in_bytes_ > 0, "Cannot allocate host memory for zero-sized tensor.");
+        h_data_ptr_.reset(new char[data_size_in_bytes_]);  // HostDeleter가 관리
         if (data_location_ == DataLocation::NONE)
         {
             data_location_ = DataLocation::HOST;
         }
-        else if (data_location_ == DataLocation::DEVICE)
-        {
-            data_location_ = DataLocation::DEVICE_AHEAD;  // GPU 데이터가 최신, CPU는 방금 할당
-        }  // 그 외 SYNCED, HOST_AHEAD 상태는 이미 host 메모리가 있음
     }
 }
 
-void Tensor::allocate_device_memory()
+void Tensor::allocate_device_memory(size_t bytes)
 {
     if (is_virtual_)
     {
@@ -274,18 +254,15 @@ void Tensor::allocate_device_memory()
     }
     if (!d_data_ptr_)
     {  // 아직 할당되지 않았을 때만
-        USHIONN_ASSERT(size_in_bytes_cache_ > 0, "Cannot allocate device memory for zero-sized tensor.");
+        data_size_in_bytes_ = bytes;
+        USHIONN_ASSERT(data_size_in_bytes_ > 0, "Cannot allocate device memory for zero-sized tensor.");
         void* ptr = nullptr;
-        CUDA_CHECK(cudaMalloc(&ptr, size_in_bytes_cache_));
+        CUDA_CHECK(cudaMalloc(&ptr, data_size_in_bytes_));
         d_data_ptr_.reset(ptr);  // CudaDeleter가 관리
         if (data_location_ == DataLocation::NONE)
         {
             data_location_ = DataLocation::DEVICE;
         }
-        else if (data_location_ == DataLocation::HOST)
-        {
-            data_location_ = DataLocation::HOST_AHEAD;  // CPU 데이터가 최신, GPU는 방금 할당
-        }  // 그 외 SYNCED, DEVICE_AHEAD 상태는 이미 device 메모리가 있음
     }
 }
 
@@ -297,27 +274,25 @@ void Tensor::to_device(cudaStream_t stream)
         USHIONN_WARN("to_device() called on a virtual tensor. Operation ignored.");
         return;
     }
-    USHIONN_ASSERT(size_in_bytes_cache_ > 0, "Cannot transfer data for zero-sized tensor.");
+    USHIONN_ASSERT(data_size_in_bytes_ > 0, "Cannot transfer data for zero-sized tensor.");
 
     switch (data_location_)
     {
         case DataLocation::NONE:
             USHIONN_LOG_FATAL("Cannot move to device: No data allocated on host.");
             break;
-        case DataLocation::HOST:       // CPU에만 데이터, GPU로 복사
-            allocate_device_memory();  // GPU 메모리 할당 (내부에서 data_location_ 변경)
-            // FALLTHROUGH (아래 HOST_AHEAD 로직 수행)
-        case DataLocation::HOST_AHEAD:  // CPU 데이터가 최신, GPU로 복사
+        case DataLocation::HOST:                          // CPU에만 데이터, GPU로 복사
+            allocate_device_memory(data_size_in_bytes_);  // GPU 메모리 할당 (내부에서 data_location_ 변경)
             USHIONN_ASSERT(h_data_ptr_ != nullptr, "Host data pointer is null in HOST_AHEAD state.");
-            if (!d_data_ptr_) allocate_device_memory();  // 만약을 위해 (정상적으론 HOST_AHEAD면 d_data_ptr_도 있어야함)
-            CUDA_CHECK(cudaMemcpyAsync(d_data_ptr_.get(), h_data_ptr_.get(), size_in_bytes_cache_,
+            if (!d_data_ptr_)
+                allocate_device_memory(
+                    data_size_in_bytes_);  // 만약을 위해 (정상적으론 HOST_AHEAD면 d_data_ptr_도 있어야함)
+            CUDA_CHECK(cudaMemcpyAsync(d_data_ptr_.get(), h_data_ptr_.get(), data_size_in_bytes_,
                                        cudaMemcpyHostToDevice, stream));
             if (stream == nullptr) CUDA_CHECK(cudaDeviceSynchronize());  // 동기 스트림이면 완료 대기
-            data_location_ = DataLocation::HOST_DEVICE_SYNCED;
+            data_location_ = DataLocation::DEVICE;
             break;
-        case DataLocation::DEVICE:              // 이미 GPU에만 있음 (최신)
-        case DataLocation::DEVICE_AHEAD:        // 이미 GPU가 최신
-        case DataLocation::HOST_DEVICE_SYNCED:  // 이미 양쪽 동기화됨
+        case DataLocation::DEVICE:  // 이미 GPU에만 있음 (최신)
             // 아무것도 안 함
             break;
     }
@@ -330,28 +305,23 @@ void Tensor::to_host(cudaStream_t stream)
         USHIONN_WARN("to_host() called on a virtual tensor. Operation ignored.");
         return;
     }
-    USHIONN_ASSERT(size_in_bytes_cache_ > 0, "Cannot transfer data for zero-sized tensor.");
+    USHIONN_ASSERT(data_size_in_bytes_ > 0, "Cannot transfer data for zero-sized tensor.");
 
     switch (data_location_)
     {
         case DataLocation::NONE:
             USHIONN_LOG_FATAL("Cannot move to host: No data allocated on device.");
             break;
-        case DataLocation::DEVICE:   // GPU에만 데이터, CPU로 복사
-            allocate_host_memory();  // CPU 메모리 할당 (내부에서 data_location_ 변경)
-            // FALLTHROUGH
-        case DataLocation::DEVICE_AHEAD:  // GPU 데이터가 최신, CPU로 복사
+        case DataLocation::DEVICE:                      // GPU에만 데이터, CPU로 복사
+            allocate_host_memory(data_size_in_bytes_);  // CPU 메모리 할당 (내부에서 data_location_ 변경)
             USHIONN_ASSERT(d_data_ptr_ != nullptr, "Device data pointer is null in DEVICE_AHEAD state.");
-            if (!h_data_ptr_) allocate_host_memory();
-            CUDA_CHECK(cudaMemcpyAsync(h_data_ptr_.get(), d_data_ptr_.get(), size_in_bytes_cache_,
+            if (!h_data_ptr_) allocate_host_memory(data_size_in_bytes_);
+            CUDA_CHECK(cudaMemcpyAsync(h_data_ptr_.get(), d_data_ptr_.get(), data_size_in_bytes_,
                                        cudaMemcpyDeviceToHost, stream));
             if (stream == nullptr) CUDA_CHECK(cudaDeviceSynchronize());
-            data_location_ = DataLocation::HOST_DEVICE_SYNCED;
+            data_location_ = DataLocation::HOST;
             break;
-        case DataLocation::HOST:                // 이미 CPU에만 있음 (최신)
-        case DataLocation::HOST_AHEAD:          // 이미 CPU가 최신
-        case DataLocation::HOST_DEVICE_SYNCED:  // 이미 양쪽 동기화됨
-            // 아무것도 안 함
+        case DataLocation::HOST:
             break;
     }
 }
@@ -364,57 +334,27 @@ void Tensor::fill_from_host(const void* host_data_ptr, size_t num_bytes, cudaStr
         return;
     }
     USHIONN_ASSERT(host_data_ptr != nullptr, "Source host_data_ptr cannot be null.");
-    USHIONN_ASSERT(num_bytes == size_in_bytes_cache_, "Data size mismatch for fill_from_host.");
+    USHIONN_ASSERT(num_bytes == data_size_in_bytes_, "Data size mismatch for fill_from_host.");
 
-    allocate_host_memory();  // CPU 메모리가 없으면 할당
-    std::memcpy(h_data_ptr_.get(), host_data_ptr, num_bytes);
-    set_host_data_dirty();  // CPU 데이터가 최신이 됨
-    // 필요하다면 to_device(stream)을 호출하여 GPU와 즉시 동기화 가능
+    USHIONN_ASSERT(data_location_ != DataLocation::NONE, "Memory must be allocated before the value is filled");
+
+    if (data_location_ == DataLocation::HOST)
+    {
+        allocate_host_memory(data_size_in_bytes_);  // CPU 메모리가 없으면 할당
+        std::memcpy(h_data_ptr_.get(), host_data_ptr, num_bytes);
+    }
+    else if (data_location_ == DataLocation::DEVICE)
+    {
+        allocate_device_memory(data_size_in_bytes_);
+        cudaMemcpy(d_data_ptr_.get(), host_data_ptr, num_bytes, cudaMemcpyHostToDevice);
+    }
 }
-
-// --- 내부 데이터 상태 변경 로직 ---
-void Tensor::set_host_data_dirty()
-{
-    if (is_virtual_) return;
-    if (data_location_ == DataLocation::DEVICE || data_location_ == DataLocation::DEVICE_AHEAD)
-    {
-        data_location_ = DataLocation::HOST_AHEAD;  // 양쪽에 데이터 있지만 CPU가 최신
-    }
-    else if (data_location_ == DataLocation::HOST_DEVICE_SYNCED)
-    {
-        data_location_ = DataLocation::HOST_AHEAD;
-    }
-    else if (data_location_ == DataLocation::NONE)
-    {  // 이 경우는 보통 allocate 후 발생
-        data_location_ = DataLocation::HOST;
-    }
-    // HOST, HOST_AHEAD 상태는 그대로 유지
-}
-
-void Tensor::set_device_data_dirty()
-{
-    if (is_virtual_) return;
-    if (data_location_ == DataLocation::HOST || data_location_ == DataLocation::HOST_AHEAD)
-    {
-        data_location_ = DataLocation::DEVICE_AHEAD;  // 양쪽에 데이터 있지만 GPU가 최신
-    }
-    else if (data_location_ == DataLocation::HOST_DEVICE_SYNCED)
-    {
-        data_location_ = DataLocation::DEVICE_AHEAD;
-    }
-    else if (data_location_ == DataLocation::NONE)
-    {
-        data_location_ = DataLocation::DEVICE;
-    }
-    // DEVICE, DEVICE_AHEAD 상태는 그대로 유지
-}
-
 // --- 기타 헬퍼 ---
 void Tensor::update_size_in_bytes_cache()
 {
     if (shape_.empty() || is_virtual_)
     {
-        size_in_bytes_cache_ = 0;
+        data_size_in_bytes_ = 0;
         return;
     }
     size_t num_elements = 1;
@@ -438,7 +378,7 @@ void Tensor::update_size_in_bytes_cache()
         default:
             USHIONN_LOG_FATAL("Unsupported data type for size calculation.");
     }
-    size_in_bytes_cache_ = num_elements * element_size;
+    data_size_in_bytes_ = num_elements * element_size;
 }
 
 const std::vector<int64_t>& Tensor::get_strides() const
@@ -457,7 +397,7 @@ size_t Tensor::get_num_elements() const
 
 size_t Tensor::get_size_in_bytes() const
 {
-    return size_in_bytes_cache_;
+    return data_size_in_bytes_;
 }
 
 void Tensor::calculate_strides_if_needed() const
@@ -531,15 +471,6 @@ void Tensor::print_meta_info(const std::string& header) const
             break;
         case DataLocation::DEVICE:
             std::cout << "DEVICE";
-            break;
-        case DataLocation::HOST_DEVICE_SYNCED:
-            std::cout << "HOST_DEVICE_SYNCED";
-            break;
-        case DataLocation::HOST_AHEAD:
-            std::cout << "HOST_AHEAD (Host is newer)";
-            break;
-        case DataLocation::DEVICE_AHEAD:
-            std::cout << "DEVICE_AHEAD (Device is newer)";
             break;
     }
     std::cout << std::endl;

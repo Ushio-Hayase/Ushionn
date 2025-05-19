@@ -11,11 +11,13 @@
 
 namespace ushionn
 {
+namespace model
+{
 
 class Sequential
 {
    public:
-    Sequential(cudnnHandle_t cudnn_handle);  // cuDNN 핸들 주입
+    Sequential(cudnnHandle_t cudnn_handle) : cudnn_handle_(cudnn_handle) {};  // cuDNN 핸들 주입
     ~Sequential();
 
     void add_layer(std::unique_ptr<Layer> layer);
@@ -56,4 +58,5 @@ class Sequential
                             size_t& workspace_size);
     void prepare_variant_pack_forward(const Tensor& actual_input);
 };
+}  // namespace model
 }  // namespace ushionn

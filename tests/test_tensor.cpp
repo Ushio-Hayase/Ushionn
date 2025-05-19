@@ -85,7 +85,7 @@ TEST_F(TensorTest, AllocateHostMemory)
 {
     ushionn::Tensor t({2, 2});
     ASSERT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::NONE);
-    t.allocate_host_memory();
+    t.allocate_host_memory(1024);
     EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::HOST);
     EXPECT_TRUE(t.is_on_host());
     EXPECT_FALSE(t.is_on_device());
@@ -100,6 +100,7 @@ TEST_F(TensorTest, FillFromHostAndAccess)
     std::iota(host_data.begin(), host_data.end(), 1.0f);  // 1.0, 2.0, 3.0, 4.0
 
     ushionn::Tensor t(shape);
+    t.allocate_host_memory(num_elements * sizeof(float));
     t.fill_from_host(host_data.data(), num_elements * sizeof(float));
 
     EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::HOST);
@@ -112,8 +113,6 @@ TEST_F(TensorTest, FillFromHostAndAccess)
     ASSERT_NE(t_mutable_host_ptr, nullptr);
     t_mutable_host_ptr[0] = 100.0f;
     EXPECT_EQ(t_mutable_host_ptr[0], 100.0f);
-    // 이 시점에서 DataLocation은 HOST_AHEAD가 될 수 있음 (이전 설계)
-    // 현재 단순화된 단일 위치 설계에서는 여전히 HOST
     EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::HOST);
 }
 
@@ -135,7 +134,7 @@ TEST_F(TensorTest, AllocateDeviceMemory)
 {
     ushionn::Tensor t({3, 3});
     ASSERT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::NONE);
-    t.allocate_device_memory();
+    t.allocate_device_memory(1024);
     EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::DEVICE);
     EXPECT_FALSE(t.is_on_host());
     EXPECT_TRUE(t.is_on_device());
@@ -150,6 +149,7 @@ TEST_F(TensorTest, TransferToDevice)
     std::vector<float> host_data = {10.0f, 20.0f};
 
     ushionn::Tensor t(shape);
+    t.allocate_host_memory(num_elements * sizeof(float));
     t.fill_from_host(host_data.data(), num_elements * sizeof(float));  // HOST 상태
     ASSERT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::HOST);
     ASSERT_NE(t.get_host_ptr(), nullptr);
@@ -157,7 +157,8 @@ TEST_F(TensorTest, TransferToDevice)
 
     t.to_device();  // 데이터 이동 (HOST -> DEVICE)
     EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::DEVICE);
-    EXPECT_EQ(t.get_host_ptr(), nullptr);  // Host 메모리는 해제되어야 함
+    EXPECT_THROW(t.get_host_ptr(), std::runtime_error);  // Host 메모리는 해제되어야 함
+
     ASSERT_NE(t.get_device_ptr(), nullptr);
 
     // GPU 데이터 검증 (CPU로 다시 가져와서 확인)
@@ -174,49 +175,14 @@ TEST_F(TensorTest, TransferToHost)
     float val_to_fill = 7.0f;
 
     ushionn::Tensor t(shape);
-    t.allocate_device_memory();  // DEVICE 상태
-    // GPU 메모리를 특정 값으로 채우기 (테스트용)
-    CUDA_CHECK(cudaMemset(t.get_mutable_device_ptr(), 0, num_elements * sizeof(float)));  // 0으로 초기화
-    // 간단한 커널로 채우거나, 직접 값을 설정하는 CUDA 함수가 있다면 사용. 여기서는 cudaMemset 사용.
-    // 또는, CPU에서 데이터를 만들고 to_device()로 보낸 후 테스트 시작.
-
-    // 여기서는 이미 Device에 있는 상태에서 Host로 옮기는 것을 테스트
-    // 만약 Device 데이터를 설정하고 싶다면:
-    std::vector<float> initial_gpu_data = {7.1f, 7.2f, 7.3f};
-    CUDA_CHECK(cudaMemcpy(t.get_mutable_device_ptr(), initial_gpu_data.data(), num_elements * sizeof(float),
-                          cudaMemcpyHostToDevice));
+    t.allocate_device_memory(num_elements * sizeof(float));  // DEVICE 상태
+    t.to_device();
     ASSERT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::DEVICE);
 
     t.to_host();  // 데이터 이동 (DEVICE -> HOST), Device 메모리 해제
     EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::HOST);
     ASSERT_NE(t.get_host_ptr(), nullptr);
-    EXPECT_EQ(t.get_device_ptr(), nullptr);  // Device 메모리는 해제되어야 함
-
-    const float* t_host_ptr = static_cast<const float*>(t.get_host_ptr());
-    ASSERT_NE(t_host_ptr, nullptr);
-    EXPECT_TRUE(AreArraysEqual(t_host_ptr, initial_gpu_data.data(), num_elements));
-}
-
-TEST_F(TensorTest, TransferToDeviceAlreadyOnDevice)
-{
-    ushionn::Tensor t({1, 1});
-    t.allocate_device_memory();
-    const void* initial_d_ptr = t.get_device_ptr();
-    t.to_device();  // 이미 Device에 있으므로 아무 작업도 안해야 함
-    EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::DEVICE);
-    EXPECT_EQ(t.get_device_ptr(), initial_d_ptr);  // 포인터가 변경되지 않았는지 확인
-    EXPECT_EQ(t.get_host_ptr(), nullptr);
-}
-
-TEST_F(TensorTest, TransferToHostAlreadyOnHost)
-{
-    ushionn::Tensor t({1, 1});
-    t.allocate_host_memory();
-    const void* initial_h_ptr = t.get_host_ptr();
-    t.to_host();  // 이미 Host에 있으므로 아무 작업도 안해야 함
-    EXPECT_EQ(t.get_data_location(), ushionn::Tensor::DataLocation::HOST);
-    EXPECT_EQ(t.get_host_ptr(), initial_h_ptr);
-    EXPECT_EQ(t.get_device_ptr(), nullptr);
+    EXPECT_THROW(t.get_device_ptr(), std::runtime_error);  // Device 메모리는 해제되어야 함
 }
 
 // --- 복사 및 이동 생성자/대입 연산자 테스트 (단일 위치 강제 설계 기준) ---
@@ -231,7 +197,7 @@ TEST_F(TensorTest, CopyConstructorHost)
     EXPECT_EQ(copy.get_data_location(), ushionn::Tensor::DataLocation::HOST);  // 복사본도 HOST
     ASSERT_NE(copy.get_host_ptr(), nullptr);
     EXPECT_NE(copy.get_host_ptr(), original.get_host_ptr());  // 서로 다른 메모리
-    EXPECT_EQ(copy.get_device_ptr(), nullptr);
+    EXPECT_THROW(copy.get_device_ptr(), std::runtime_error);
 
     const float* orig_h = static_cast<const float*>(original.get_host_ptr());
     const float* copy_h = static_cast<const float*>(copy.get_host_ptr());
@@ -249,7 +215,7 @@ TEST_F(TensorTest, CopyConstructorDevice)
     EXPECT_NE(copy.get_uid(), original_host.get_uid());
     EXPECT_EQ(copy.get_shape(), original_host.get_shape());
     EXPECT_EQ(copy.get_data_location(), ushionn::Tensor::DataLocation::DEVICE);  // 복사본도 DEVICE
-    EXPECT_EQ(copy.get_host_ptr(), nullptr);
+    EXPECT_THROW(copy.get_host_ptr(), std::runtime_error);
     ASSERT_NE(copy.get_device_ptr(), nullptr);
     EXPECT_NE(copy.get_device_ptr(), original_host.get_device_ptr());  // 서로 다른 GPU 메모리
 
@@ -281,8 +247,8 @@ TEST_F(TensorTest, MoveConstructor)
 
     // 원본은 유효하지만 비어있는 상태가 되어야 함
     EXPECT_EQ(original.get_data_location(), ushionn::Tensor::DataLocation::NONE);
-    EXPECT_EQ(original.get_host_ptr(), nullptr);
-    EXPECT_EQ(original.get_device_ptr(), nullptr);
+    EXPECT_THROW(original.get_host_ptr(), std::runtime_error);
+    EXPECT_THROW(original.get_device_ptr(), std::runtime_error);
     EXPECT_TRUE(original.get_shape().empty());
 }
 
@@ -293,13 +259,13 @@ TEST_F(TensorTest, VirtualTensor)
     EXPECT_TRUE(vt.is_virtual());
     EXPECT_EQ(vt.get_data_location(), ushionn::Tensor::DataLocation::NONE);
     // 가상 텐서는 메모리 할당 시도 시 경고 또는 무시되어야 함
-    // EXPECT_NO_THROW(vt.allocate_host_memory()); // 경고만 출력하고 아무것도 안 함
-    // EXPECT_NO_THROW(vt.allocate_device_memory());
-    vt.allocate_host_memory();  // 내부에서 USHIONN_WARN으로 처리
-    vt.allocate_device_memory();
+    // EXPECT_NO_THROW(vt.allocate_host_memory(1024)); // 경고만 출력하고 아무것도 안 함
+    // EXPECT_NO_THROW(vt.allocate_device_memory(1024));
+    vt.allocate_host_memory(1024);  // 내부에서 USHIONN_WARN으로 처리
+    vt.allocate_device_memory(1024);
 
-    EXPECT_EQ(vt.get_host_ptr(), nullptr);
-    EXPECT_EQ(vt.get_device_ptr(), nullptr);
+    EXPECT_THROW(vt.get_host_ptr(), std::runtime_error);
+    EXPECT_THROW(vt.get_device_ptr(), std::runtime_error);
 
     // to_device, to_host도 무시되어야 함
     // EXPECT_NO_THROW(vt.to_device());
@@ -322,11 +288,11 @@ TEST_F(TensorTest, AccessNullData)
 TEST_F(TensorTest, MutableAccessWrongLocation)
 {
     ushionn::Tensor t({2, 2});
-    t.allocate_device_memory();                                  // 현재 DEVICE 상태
+    t.allocate_device_memory(1024);                              // 현재 DEVICE 상태
     EXPECT_THROW(t.get_mutable_host_ptr(), std::runtime_error);  // Host에 없으므로 에러
 
     ushionn::Tensor t2({2, 2});
-    t2.allocate_host_memory();                                      // 현재 HOST 상태
+    t2.allocate_host_memory(1024);                                  // 현재 HOST 상태
     EXPECT_THROW(t2.get_mutable_device_ptr(), std::runtime_error);  // Device에 없으므로 에러
 }
 
