@@ -12,6 +12,8 @@ namespace fe = cudnn_frontend;
 
 namespace ushionn
 {
+namespace nn
+{
 
 class Layer
 {
@@ -19,6 +21,8 @@ class Layer
     Layer(std::string name) : name_(std::move(name)) {}
     virtual ~Layer() = default;
 
+    /// @brief 레이어의 이름을 반환
+    /// @return 레이어의 이름
     const inline std::string& get_name() const { return name_; }
 
     // --- 핵심 메소드: 그래프 구성 ---
@@ -42,6 +46,10 @@ class Layer
     virtual std::vector<Tensor*> get_parameters() = 0;
     virtual std::vector<Tensor*> get_gradients() = 0;                     // 파라미터에 대한 그래디언트
     virtual void initialize_parameters(unsigned long long seed = 0) = 0;  // 파라미터 초기화
+
+   protected:
+    virtual std::shared_ptr<fe::graph::Tensor_attributes> get_input_cache_tensor_attributes(
+        std::shared_ptr<fe::graph::Graph> graph) = 0;
 
    protected:
     std::string name_;
@@ -88,11 +96,18 @@ class DenseLayer : public Layer
 
     void initialize_parameters(unsigned long long seed = 0);
 
+   protected:
+    std::shared_ptr<fe::graph::Tensor_attributes> get_input_cache_tensor_attributes(
+        std::shared_ptr<fe::graph::Graph> graph) override;
+
    private:
     Tensor weights_;
     Tensor bias_;
     Tensor weights_grad_;
     Tensor bias_grad_;
+
+    Tensor input_cache_;
 };
+}  // namespace nn
 
 }  // namespace ushionn

@@ -2,7 +2,8 @@
 
 namespace ushionn
 {
-
+namespace nn
+{
 std::shared_ptr<fe::graph::Tensor_attributes> DenseLayer::add_forward_to_graph(
     std::shared_ptr<fe::graph::Graph>& graph,
     const std::shared_ptr<fe::graph::Tensor_attributes>& input_tensor_graph_ref)
@@ -91,4 +92,5 @@ std::vector<Tensor*> DenseLayer::get_gradients()
     return {&weights_grad_, &bias_grad_};
 }
 
+}  // namespace nn
 }  // namespace ushionn

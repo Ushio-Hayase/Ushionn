@@ -83,7 +83,8 @@ class Tensor
     size_t get_num_elements() const;
     size_t get_size_in_bytes() const;
 
-    // --- 데이터 위치 상태 확인 ---
+    /// @brief 데이터의 현재 위치 확인
+    /// @return 데이터의 위치 열거형
     DataLocation get_data_location() const { return data_location_; }
 
     /// @brief CPU에 유효한 데이터가 있는가
