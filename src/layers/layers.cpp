@@ -58,13 +58,14 @@ std::shared_ptr<fe::graph::Tensor_attributes> DenseLayer::add_backward_to_graph(
                           .set_name(name_ + "_weights_matmul_out_bwd"));
 
     // reduction 작업 attributes 정의
-    auto reduction_operation = fe::graph::Reduction_attributes()
+    auto reduction_operation = fe::graph::Pointwise_attributes()
                                    .set_compute_data_type(bias_grad_.get_data_type())
-                                   .set_mode(fe::ReductionMode_t::ADD);
+                                   .set_mode(fe::PointwiseMode_t::ADD)
+                                   .set_axis(0);
     auto bias_grad_tensor_attributes = bias_grad_.create_graph_tensor_attributes(graph);
 
     // 손실함수에 대한 편향의 기울기 계산
-    bias_grad_tensor_attributes = graph->tensor(graph->reduction(output_grad_graph_ref, reduction_operation)
+    bias_grad_tensor_attributes = graph->tensor(graph->pointwise(output_grad_graph_ref, reduction_operation)
                                                     ->set_is_virtual(true)
                                                     .set_name(name_ + "_bias_add_out_bwd"));
 

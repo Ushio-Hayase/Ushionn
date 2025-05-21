@@ -44,9 +44,6 @@ class Sequential
     /* 순전파 변수 */
     std::shared_ptr<fe::graph::Graph> forward_graph_;
 
-    std::vector<std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>>>
-        fwd_input_output_tensor_attribute_pair_;
-
     std::vector<Tensor> intermediate_tensors_fwd_;  // 각 레이어의 출력을 담을 실제 Tensor 객체들
     std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*>
         variant_pack_fwd_;  // 실행 시 사용할 variant pack

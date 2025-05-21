@@ -25,31 +25,23 @@ class Layer
     /// @return 레이어의 이름
     const inline std::string& get_name() const { return name_; }
 
-    // --- 핵심 메소드: 그래프 구성 ---
-    // 이 레이어의 forward 연산을 주어진 Graph에 추가하고, 출력 Tensor의 "정의"를 반환.
-    // input_tensor_graph_ref는 이전 레이어의 출력이거나 모델의 입력에 해당하는
-    // 이미 Graph에 정의된 fe::graph::Tensor 객체에 대한 참조.
+    // 순전파 그래프 구성 순수 가상 함수
     virtual std::shared_ptr<fe::graph::Tensor_attributes> add_forward_to_graph(
         std::shared_ptr<fe::graph::Graph>& graph,
         const std::shared_ptr<fe::graph::Tensor_attributes>& input_tensor_graph_ref) = 0;
 
-    // 역전파 그래프 구성 (유사한 방식)
+    // 역전파 그래프 구성 순수 가상 함수
     virtual std::shared_ptr<fe::graph::Tensor_attributes> add_backward_to_graph(
         std::shared_ptr<fe::graph::Graph>& graph,
         const std::shared_ptr<fe::graph::Tensor_attributes>& output_grad_graph_ref,
-        const std::shared_ptr<fe::graph::Tensor_attributes>& fwd_input_graph_ref,    // 순전파 시의 입력
-        const std::shared_ptr<fe::graph::Tensor_attributes>& fwd_output_graph_ref);  // 순전파 시의 출력 (필요시)) = 0;
+        const std::shared_ptr<fe::graph::Tensor_attributes>& fwd_input_graph_ref,  // 순전파 시의 입력
+        const std::shared_ptr<fe::graph::Tensor_attributes>&
+            fwd_output_graph_ref) = 0;  // 순전파 시의 출력 (필요시)) = 0;
 
-    // --- 파라미터 관리 (기존과 유사) ---
-    // 학습 가능한 파라미터 (가중치, 편향) Tensor 객체들을 반환.
-    // 이 Tensor들은 실제 메모리를 가지고 있어야 하며, 그래프 구성 시 사용됨.
+    /* 파라미터 관리 */
     virtual std::vector<Tensor*> get_parameters() = 0;
     virtual std::vector<Tensor*> get_gradients() = 0;                     // 파라미터에 대한 그래디언트
     virtual void initialize_parameters(unsigned long long seed = 0) = 0;  // 파라미터 초기화
-
-   protected:
-    virtual std::shared_ptr<fe::graph::Tensor_attributes> get_input_cache_tensor_attributes(
-        std::shared_ptr<fe::graph::Graph> graph) = 0;
 
    protected:
     std::string name_;
@@ -96,17 +88,11 @@ class DenseLayer : public Layer
 
     void initialize_parameters(unsigned long long seed = 0);
 
-   protected:
-    std::shared_ptr<fe::graph::Tensor_attributes> get_input_cache_tensor_attributes(
-        std::shared_ptr<fe::graph::Graph> graph) override;
-
    private:
     Tensor weights_;
     Tensor bias_;
     Tensor weights_grad_;
     Tensor bias_grad_;
-
-    Tensor input_cache_;
 };
 }  // namespace nn
 

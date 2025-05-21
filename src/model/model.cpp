@@ -17,6 +17,10 @@ void Sequential::build_model_graph(const Tensor& input_shape_template, bool trai
     auto fwd_input_tensor_attributes =
         model_input_template_.create_graph_tensor_attributes(forward_graph_, true, false);
 
+    // 순전파시 입출력 텐서 속성을 기록할 변수
+    std::vector<std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>>>
+        fwd_input_output_tensor_attribute_pair_;
+
     // gpu에 할당할 포인터 변수 선언
     void* input_fwd_gpu_ptr = nullptr;
     void* output_fwd_gpu_ptr = nullptr;

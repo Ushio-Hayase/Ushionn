@@ -35,9 +35,7 @@ struct HostDeleter
     {
         if (ptr)
         {
-            // 가정: h_data_가 new char[bytes] 또는 new float[num_elements] 등으로 할당됨
-            // 만약 std::vector<float> 등을 직접 사용한다면 unique_ptr로 감쌀 필요 없음
-            delete[] static_cast<char*>(ptr);  // 바이트 배열로 할당했다면 char*로 캐스팅
+            delete[] static_cast<char*>(ptr);
         }
     }
 };
