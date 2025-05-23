@@ -13,10 +13,8 @@ void Sequential::add_layer(std::unique_ptr<nn::Layer> layer)
 bool Sequential::build_model_graph(const Tensor& input_shape_template, bool training)
 {
     USHIONN_ASSERT(!layers_.empty(), "No layers in the model");
-    model_input_template_ = input_shape_template;
 
-    auto fwd_input_tensor_attributes =
-        model_input_template_.create_graph_tensor_attributes(forward_graph_, true, false);
+    auto fwd_input_tensor_attributes = input_shape_template.create_graph_tensor_attributes(forward_graph_, true, false);
 
     // 순전파시 입출력 텐서 속성을 기록할 변수
     std::vector<std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>>>
@@ -41,16 +39,17 @@ bool Sequential::build_model_graph(const Tensor& input_shape_template, bool trai
 
             // 입출력 텐서 속성 저장 변수 중 출력을 저장 후 멤버 변수에 추가
             input_output_pair.second = fwd_tensor_attributes;
-            fwd_input_output_tensor_attribute_pair_.push_back(input_output_pair);
+            fwd_input_output_tensor_attribute_pair_.push_back(std::move(input_output_pair));
 
             // 마지막 레이어일때 처리
             if (layer == layers_.end() - 1)
-                output_tensor_attributes =
-                    forward_graph_->tensor(fwd_tensor_attributes->set_output(true).set_is_virtual(false));
+            {
+                output_tensor_attributes = fwd_tensor_attributes;
+                output_tensor_attributes->set_output(true).set_is_virtual(false).set_data_type(data_type_);
+            }
         }
 
-        Tensor model_output_ =
-            Tensor(output_tensor_attributes->get_dim(), fe::DataType_t::FLOAT, false, "model_output");
+        Tensor model_output_ = Tensor(output_tensor_attributes->get_dim(), data_type_, false, "model_output");
 
         /* --- 순전파 그래프 빌드 --- */
 
@@ -67,19 +66,21 @@ bool Sequential::build_model_graph(const Tensor& input_shape_template, bool trai
 
         auto bwd_tensor_attributes = bwd_input_tensor_attributes;
 
-        for (auto layer = layers_.begin(); layer != layers_.end(); layer--)
+        for (auto layer = layers_.rbegin(); layer != layers_.rend(); layer++)
         {
-            const int dist = std::distance(layers_.begin(), layer);
+            const int dist = std::distance(layer, layers_.rend());
 
             // 순전파시 입출력 텐서
-            const auto& fwd_pair = fwd_input_output_tensor_attribute_pair_[dist];
+            const auto& fwd_pair = fwd_input_output_tensor_attribute_pair_.at(dist - 1);
 
             bwd_tensor_attributes = (*layer)->add_backward_to_graph(backward_graph_, bwd_tensor_attributes,
                                                                     fwd_pair.first, fwd_pair.second);
 
-            if (layer == layers_.begin())
-                bwd_output_tensor_attributes =
-                    backward_graph_->tensor(bwd_tensor_attributes->set_output(true).set_is_virtual(false));
+            if (layer == layers_.rbegin())
+            {
+                bwd_output_tensor_attributes = bwd_tensor_attributes;
+                bwd_output_tensor_attributes->set_output(true).set_is_virtual(false);
+            }
         }
 
         /* --- 역전파 그래프 빌드 --- */
@@ -99,8 +100,11 @@ Tensor Sequential::predict(const Tensor& x_input)
     USHIONN_ASSERT(x_input.get_data_location() == ushionn::Tensor::DataLocation::DEVICE,
                    "Input tensor must already be on the DEVICE");
 
-    USHIONN_ASSERT(fwd_graph_built_ && bwd_graph_built_,
-                   "Graph is not built. Call build_model_graph() with appropriate input template first.");
+    USHIONN_ASSERT(fwd_graph_built_,
+                   "Forward Graph is not built. Call build_model_graph() with appropriate input template first.");
+
+    USHIONN_ASSERT(bwd_graph_built_,
+                   "Backward Graph is not built. Call build_model_graph() with appropriate input template first.");
 
     variant_pack_fwd_.clear();
     variant_pack_bwd_.clear();
@@ -128,19 +132,11 @@ Tensor Sequential::predict(const Tensor& x_input)
 
     cudaMalloc(&workspace_fwd_, workspace_size_fwd_);
 
-    auto execute_err = forward_graph_->execute(cudnn_handle_, variant_pack_fwd_, workspace_fwd_);
+    auto execute_err = forward_graph_->execute(*cudnn_handle_, variant_pack_fwd_, workspace_fwd_);
 
     if (execute_err.is_bad()) USHIONN_LOG_FATAL("Forward graph Executing Error : " + execute_err.get_message());
 
     return model_output_;
-}
-
-void Sequential::cuda_malloc_and_variant_pack_insert(
-    std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*>& variant_pack,
-    std::shared_ptr<fe::graph::Tensor_attributes>& key, void* value, size_t size)
-{
-    cudaMalloc(&value, size);
-    variant_pack.insert({key, value});
 }
 
 bool Sequential::build_graph(std::shared_ptr<fe::graph::Graph> graph)
@@ -149,7 +145,15 @@ bool Sequential::build_graph(std::shared_ptr<fe::graph::Graph> graph)
 
     if (validata_err.is_bad())
     {
-        USHIONN_WARN("Forward graph validate Error : " + validata_err.get_message());
+        USHIONN_WARN("Graph validate Error : " + validata_err.get_message());
+        return false;
+    }
+
+    auto build_operation_err = graph->build_operation_graph(*cudnn_handle_);
+
+    if (build_operation_err.is_bad())
+    {
+        USHIONN_WARN("Graph building operation Error : " + build_operation_err.get_message());
         return false;
     }
 
@@ -157,23 +161,23 @@ bool Sequential::build_graph(std::shared_ptr<fe::graph::Graph> graph)
 
     if (execution_plans_err.is_bad())
     {
-        USHIONN_WARN("Forward graph Creating execution plans Error : " + execution_plans_err.get_message());
+        USHIONN_WARN("Graph Creating execution plans Error : " + execution_plans_err.get_message());
         return false;
     }
 
-    auto check_support_err = graph->check_support(cudnn_handle_);
+    auto check_support_err = graph->check_support(*cudnn_handle_);
 
     if (check_support_err.is_bad())
     {
-        USHIONN_WARN("Forward graph checking support Error : " + check_support_err.get_message());
+        USHIONN_WARN("Graph checking support Error : " + check_support_err.get_message());
         return false;
     }
 
-    auto build_plans_err = graph->build_plans(cudnn_handle_, fe::BuildPlanPolicy_t::ALL);
+    auto build_plans_err = graph->build_plans(*cudnn_handle_, fe::BuildPlanPolicy_t::ALL);
 
     if (build_plans_err.is_bad())
     {
-        USHIONN_WARN("Forward graph building plans Error : " + build_plans_err.get_message());
+        USHIONN_WARN("Graph building plans Error : " + build_plans_err.get_message());
         return false;
     }
 

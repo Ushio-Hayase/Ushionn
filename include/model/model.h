@@ -19,9 +19,15 @@ namespace model
 class Sequential
 {
    public:
-    Sequential() = delete;
-    Sequential(cudnnHandle_t cudnn_handle)
-        : cudnn_handle_(cudnn_handle), forward_graph_(new fe::graph::Graph()) {};  // cuDNN 핸들 주입
+    Sequential()
+        : cudnn_handle_(std::make_unique<cudnnHandle_t>()),
+          forward_graph_(std::make_shared<fe::graph::Graph>()),
+          backward_graph_(std::make_shared<fe::graph::Graph>())
+    {
+        forward_graph_->set_dynamic_shape_enabled(true).set_compute_data_type(data_type_);
+        backward_graph_->set_dynamic_shape_enabled(true).set_compute_data_type(data_type_);
+        cudnnCreate(cudnn_handle_.get());
+    };  // cuDNN 핸들 주입
     virtual ~Sequential() = default;
 
     void add_layer(std::unique_ptr<nn::Layer> layer);
@@ -41,14 +47,11 @@ class Sequential
    private:
     // 내부 헬퍼
     void allocate_workspace(std::shared_ptr<fe::graph::Graph>& graph, void*& workspace_ptr, size_t& workspace_size);
-    void cuda_malloc_and_variant_pack_insert(
-        std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*>& variant_pack,
-        std::shared_ptr<fe::graph::Tensor_attributes>& key, void* value, size_t size);
 
     bool build_graph(std::shared_ptr<fe::graph::Graph> graph);
 
    private:
-    cudnnHandle_t cudnn_handle_;
+    std::unique_ptr<cudnnHandle_t> cudnn_handle_;
     std::vector<std::unique_ptr<nn::Layer>> layers_;
 
     /* 순전파 변수 */
@@ -70,11 +73,12 @@ class Sequential
     void* workspace_bwd_ = nullptr;
     size_t workspace_size_bwd_ = 0;
 
-    Tensor model_input_template_;
     Tensor model_output_;
 
     bool fwd_graph_built_ = false;
     bool bwd_graph_built_ = false;
+
+    fe::DataType_t data_type_ = fe::DataType_t::FLOAT;
 };
 }  // namespace model
 }  // namespace ushionn

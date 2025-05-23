@@ -47,7 +47,7 @@ class Layer
 
    protected:
     std::string name_;
-    fe::DataType_t data_type_;
+    fe::DataType_t data_type_ = fe::DataType_t::FLOAT;
 };
 
 class DenseLayer : public Layer
@@ -55,10 +55,10 @@ class DenseLayer : public Layer
    public:
     DenseLayer(int64_t batch_size, int64_t input_size, int64_t output_size, std::string name)
         : Layer(name),
-          weights_({batch_size, input_size, output_size}),
-          bias_({batch_size, input_size, output_size}),
-          weights_grad_({batch_size, input_size, output_size}),
-          bias_grad_({batch_size, input_size, output_size})
+          weights_({batch_size, input_size, output_size}, fe::DataType_t::FLOAT, false, name + "_weight"),
+          bias_({batch_size, 1, output_size}, fe::DataType_t::FLOAT, false, name + "_bias"),
+          weights_grad_({batch_size, input_size, output_size}, fe::DataType_t::FLOAT, false, name + "_weight_grad"),
+          bias_grad_({batch_size, 1, output_size}, fe::DataType_t::FLOAT, false, name + "_bias_grad")
     {
     }
 
