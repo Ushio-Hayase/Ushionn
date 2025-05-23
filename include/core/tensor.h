@@ -138,7 +138,7 @@ class Tensor
 
     // cuDNN Graph API 연동 헬퍼
     std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> create_graph_tensor_attributes(
-        std::shared_ptr<cudnn_frontend::graph::Graph>& graph, bool is_input = false, bool is_output = false);
+        std::shared_ptr<cudnn_frontend::graph::Graph>& graph, bool is_input = false, bool is_output = false) const;
 
    private:
     std::vector<int64_t> shape_;

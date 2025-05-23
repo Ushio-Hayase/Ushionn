@@ -7,11 +7,12 @@ namespace model
 {
 void Sequential::add_layer(std::unique_ptr<nn::Layer> layer)
 {
-    layers_.push_back(layer);
+    layers_.push_back(std::move(layer));
 }
 
-void Sequential::build_model_graph(const Tensor& input_shape_template, bool training)
+bool Sequential::build_model_graph(const Tensor& input_shape_template, bool training)
 {
+    USHIONN_ASSERT(!layers_.empty(), "No layers in the model");
     model_input_template_ = input_shape_template;
 
     auto fwd_input_tensor_attributes =
@@ -21,75 +22,162 @@ void Sequential::build_model_graph(const Tensor& input_shape_template, bool trai
     std::vector<std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>>>
         fwd_input_output_tensor_attribute_pair_;
 
-    // gpu에 할당할 포인터 변수 선언
-    void* input_fwd_gpu_ptr = nullptr;
-    void* output_fwd_gpu_ptr = nullptr;
-    void* input_bwd_gpu_ptr = nullptr;
-    void* output_bwd_gpu_ptr = nullptr;
-
     // 순전파, 역전파 출력 텐서 속성
     std::shared_ptr<fe::graph::Tensor_attributes> output_tensor_attributes;
     std::shared_ptr<fe::graph::Tensor_attributes> bwd_output_tensor_attributes;
 
-    cudaMalloc(&input_fwd_gpu_ptr, model_input_template_.get_size_in_bytes());
-
-    variant_pack_fwd_.insert({fwd_input_tensor_attributes, input_fwd_gpu_ptr});
-
-    auto fwd_tensor_attributes = fwd_input_tensor_attributes;
-
-    for (auto layer = layers_.begin(); layer != layers_.end(); layer++)
+    if (!fwd_graph_built_)
     {
-        // 입출력 텐서 속성 저장 변수
-        std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>>
-            input_output_pair = {fwd_input_tensor_attributes, nullptr};
+        auto fwd_tensor_attributes = fwd_input_tensor_attributes;
 
-        // 순전파 처리
-        fwd_tensor_attributes = (*layer)->add_forward_to_graph(forward_graph_, fwd_tensor_attributes);
+        for (auto layer = layers_.begin(); layer != layers_.end(); layer++)
+        {
+            // 입출력 텐서 속성 저장 변수
+            std::pair<std::shared_ptr<fe::graph::Tensor_attributes>, std::shared_ptr<fe::graph::Tensor_attributes>>
+                input_output_pair = {fwd_input_tensor_attributes, nullptr};
 
-        // 입출력 텐서 속성 저장 변수 중 출력을 저장 후 멤버 변수에 추가
-        input_output_pair.second = fwd_tensor_attributes;
-        fwd_input_output_tensor_attribute_pair_.push_back(input_output_pair);
+            // 순전파 처리
+            fwd_tensor_attributes = (*layer)->add_forward_to_graph(forward_graph_, fwd_tensor_attributes);
 
-        // 마지막 레이어일때 처리
-        if (layer == layers_.end() - 1)
-            output_tensor_attributes =
-                forward_graph_->tensor(fwd_tensor_attributes->set_output(true).set_is_virtual(false));
+            // 입출력 텐서 속성 저장 변수 중 출력을 저장 후 멤버 변수에 추가
+            input_output_pair.second = fwd_tensor_attributes;
+            fwd_input_output_tensor_attribute_pair_.push_back(input_output_pair);
+
+            // 마지막 레이어일때 처리
+            if (layer == layers_.end() - 1)
+                output_tensor_attributes =
+                    forward_graph_->tensor(fwd_tensor_attributes->set_output(true).set_is_virtual(false));
+        }
+
+        Tensor model_output_ =
+            Tensor(output_tensor_attributes->get_dim(), fe::DataType_t::FLOAT, false, "model_output");
+
+        /* --- 순전파 그래프 빌드 --- */
+
+        bool fwd_build_graph_err_value = build_graph(forward_graph_);
+
+        if (!fwd_build_graph_err_value) return fwd_build_graph_err_value;
+
+        /* ------ */
     }
 
-    Tensor model_output_template_(output_tensor_attributes->get_dim(), fe::DataType_t::FLOAT, false, "model_output");
-
-    cudaMalloc(&output_fwd_gpu_ptr, model_output_template_.get_size_in_bytes());
-    variant_pack_fwd_.insert({output_tensor_attributes, output_fwd_gpu_ptr});
-
-    auto bwd_input_tensor_attribute = backward_graph_->tensor(output_tensor_attributes->set_is_virtual(false));
-
-    cudaMalloc(&input_bwd_gpu_ptr, model_output_template_.get_size_in_bytes());
-    variant_pack_bwd_.insert({bwd_input_tensor_attribute, input_bwd_gpu_ptr});
-
-    auto bwd_tensor_attributes = bwd_input_tensor_attribute;
-
-    for (auto layer = layers_.begin(); layer != layers_.end(); layer--)
+    if (!bwd_graph_built_)
     {
-        const int dist = std::distance(layers_.begin(), layer);
+        auto bwd_input_tensor_attributes = backward_graph_->tensor(output_tensor_attributes->set_is_virtual(false));
 
-        // 순전파시 입출력 텐서
-        const auto& fwd_pair = fwd_input_output_tensor_attribute_pair_[dist];
+        auto bwd_tensor_attributes = bwd_input_tensor_attributes;
 
-        bwd_tensor_attributes =
-            (*layer)->add_backward_to_graph(backward_graph_, bwd_tensor_attributes, fwd_pair.first, fwd_pair.second);
+        for (auto layer = layers_.begin(); layer != layers_.end(); layer--)
+        {
+            const int dist = std::distance(layers_.begin(), layer);
 
-        if (layer == layers_.begin())
-            bwd_output_tensor_attributes =
-                backward_graph_->tensor(bwd_tensor_attributes->set_output(true).set_is_virtual(false));
+            // 순전파시 입출력 텐서
+            const auto& fwd_pair = fwd_input_output_tensor_attribute_pair_[dist];
+
+            bwd_tensor_attributes = (*layer)->add_backward_to_graph(backward_graph_, bwd_tensor_attributes,
+                                                                    fwd_pair.first, fwd_pair.second);
+
+            if (layer == layers_.begin())
+                bwd_output_tensor_attributes =
+                    backward_graph_->tensor(bwd_tensor_attributes->set_output(true).set_is_virtual(false));
+        }
+
+        /* --- 역전파 그래프 빌드 --- */
+
+        bool bwd_build_graph_err_value = build_graph(backward_graph_);
+
+        if (!bwd_build_graph_err_value) return bwd_build_graph_err_value;
+
+        /* ------ */
     }
-
-    cudaMalloc(&output_bwd_gpu_ptr, model_input_template_.get_size_in_bytes());
-    variant_pack_bwd_.insert({bwd_output_tensor_attributes, output_bwd_gpu_ptr});
+    return true;
 }
 
 Tensor Sequential::predict(const Tensor& x_input)
 {
+    USHIONN_ASSERT(!layers_.empty(), "No layers in the model");
+    USHIONN_ASSERT(x_input.get_data_location() == ushionn::Tensor::DataLocation::DEVICE,
+                   "Input tensor must already be on the DEVICE");
+
+    USHIONN_ASSERT(fwd_graph_built_ && bwd_graph_built_,
+                   "Graph is not built. Call build_model_graph() with appropriate input template first.");
+
+    variant_pack_fwd_.clear();
+    variant_pack_bwd_.clear();
+
+    auto input_tensor_attribute = x_input.create_graph_tensor_attributes(forward_graph_, true, false);
+
+    variant_pack_fwd_[input_tensor_attribute] = const_cast<void*>(x_input.get_device_ptr());
+
+    for (const auto& layer : layers_)
+    {
+        for (auto param : layer->get_parameters())
+        {
+            USHIONN_ASSERT(param->is_on_device(), "Parameter tensor is not on device");
+            variant_pack_fwd_[input_tensor_attribute] = const_cast<void*>(param->get_device_ptr());
+        }
+    }
+
+    model_output_.allocate_device_memory(model_output_.get_size_in_bytes());
+
+    auto output_tensor_attribute = model_output_.create_graph_tensor_attributes(forward_graph_);
+
+    variant_pack_fwd_[output_tensor_attribute] = const_cast<void*>(model_output_.get_device_ptr());
+
+    workspace_size_fwd_ = forward_graph_->get_workspace_size();
+
+    cudaMalloc(&workspace_fwd_, workspace_size_fwd_);
+
+    auto execute_err = forward_graph_->execute(cudnn_handle_, variant_pack_fwd_, workspace_fwd_);
+
+    if (execute_err.is_bad()) USHIONN_LOG_FATAL("Forward graph Executing Error : " + execute_err.get_message());
+
+    return model_output_;
 }
 
+void Sequential::cuda_malloc_and_variant_pack_insert(
+    std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*>& variant_pack,
+    std::shared_ptr<fe::graph::Tensor_attributes>& key, void* value, size_t size)
+{
+    cudaMalloc(&value, size);
+    variant_pack.insert({key, value});
+}
+
+bool Sequential::build_graph(std::shared_ptr<fe::graph::Graph> graph)
+{
+    auto validata_err = graph->validate();
+
+    if (validata_err.is_bad())
+    {
+        USHIONN_WARN("Forward graph validate Error : " + validata_err.get_message());
+        return false;
+    }
+
+    auto execution_plans_err = graph->create_execution_plans({fe::HeurMode_t::A});
+
+    if (execution_plans_err.is_bad())
+    {
+        USHIONN_WARN("Forward graph Creating execution plans Error : " + execution_plans_err.get_message());
+        return false;
+    }
+
+    auto check_support_err = graph->check_support(cudnn_handle_);
+
+    if (check_support_err.is_bad())
+    {
+        USHIONN_WARN("Forward graph checking support Error : " + check_support_err.get_message());
+        return false;
+    }
+
+    auto build_plans_err = graph->build_plans(cudnn_handle_, fe::BuildPlanPolicy_t::ALL);
+
+    if (build_plans_err.is_bad())
+    {
+        USHIONN_WARN("Forward graph building plans Error : " + build_plans_err.get_message());
+        return false;
+    }
+
+    return true;
+}
 }  // namespace model
 }  // namespace ushionn

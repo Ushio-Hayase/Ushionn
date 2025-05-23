@@ -479,7 +479,7 @@ void Tensor::print_meta_info(const std::string& header) const
 }
 
 std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> Tensor::create_graph_tensor_attributes(
-    std::shared_ptr<cudnn_frontend::graph::Graph>& graph, bool is_input, bool is_output)
+    std::shared_ptr<cudnn_frontend::graph::Graph>& graph, bool is_input, bool is_output) const
 {
     USHIONN_ASSERT(graph != nullptr, "Graph object cannot be null.");
     auto tensor_attrs = cudnn_frontend::graph::Tensor_attributes()

@@ -93,5 +93,29 @@ std::vector<Tensor*> DenseLayer::get_gradients()
     return {&weights_grad_, &bias_grad_};
 }
 
+void DenseLayer::initialize_parameters_norm(unsigned long long seed)
+{
+    USHIONN_ASSERT(weights_.is_on_host(), "The weight to initialize must be on the host");
+
+    size_t num_elem = weights_.get_num_elements();
+
+    std::mt19937 gen(seed);
+
+    if (data_type_ == fe::DataType_t::FLOAT)
+    {
+        std::normal_distribution<float> dist;
+        for (int i = 0; i < num_elem; ++i) static_cast<float*>(weights_.get_mutable_host_ptr())[i] = dist(gen);
+    }
+    else if (data_type_ == fe::DataType_t::DOUBLE)
+    {
+        std::normal_distribution<double> dist;
+        for (int i = 0; i < num_elem; ++i) static_cast<double*>(weights_.get_mutable_host_ptr())[i] = dist(gen);
+    }
+    else if (data_type_ == fe::DataType_t::INT32)
+    {
+        USHIONN_LOG_FATAL("This library does not yet support integer weight initialization");
+    }
+}
+
 }  // namespace nn
 }  // namespace ushionn

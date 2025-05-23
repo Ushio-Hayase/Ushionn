@@ -87,6 +87,7 @@ if(BUILD_TESTING) # CMake 옵션으로 테스트 빌드 여부 제어 가능 (�
         tests/main.cpp # 테스트를 실행하는 main 함수 (아래 예시 참고)
         tests/test_tensor.cpp
         tests/test_layers.cpp
+        tests/test_model.cpp
         # ... 기타 테스트 파일 ...
     )
 

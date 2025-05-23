@@ -3,6 +3,7 @@
 #include <cudnn_frontend.h>
 
 #include <memory>  // for std::shared_ptr
+#include <random>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,8 @@ namespace nn
 class Layer
 {
    public:
-    Layer(std::string name) : name_(std::move(name)) {}
+    Layer(std::string name) : name_(std::move(name)), data_type_(fe::DataType_t::FLOAT) {}
+    Layer(std::string name, fe::DataType_t type) : name_(std::move(name)), data_type_(type) {}
     virtual ~Layer() = default;
 
     /// @brief 레이어의 이름을 반환
@@ -40,15 +42,17 @@ class Layer
 
     /* 파라미터 관리 */
     virtual std::vector<Tensor*> get_parameters() = 0;
-    virtual std::vector<Tensor*> get_gradients() = 0;                     // 파라미터에 대한 그래디언트
-    virtual void initialize_parameters(unsigned long long seed = 0) = 0;  // 파라미터 초기화
+    virtual std::vector<Tensor*> get_gradients() = 0;                          // 파라미터에 대한 그래디언트
+    virtual void initialize_parameters_norm(unsigned long long seed = 0) = 0;  // 파라미터 초기화
 
    protected:
     std::string name_;
+    fe::DataType_t data_type_;
 };
 
 class DenseLayer : public Layer
 {
+   public:
     DenseLayer(int64_t batch_size, int64_t input_size, int64_t output_size, std::string name)
         : Layer(name),
           weights_({batch_size, input_size, output_size}),
@@ -86,7 +90,7 @@ class DenseLayer : public Layer
     /// @return 가중치 기울기와 편향 기울기 배열
     std::vector<Tensor*> get_gradients() override;
 
-    void initialize_parameters(unsigned long long seed = 0);
+    void initialize_parameters_norm(unsigned long long seed = 0);
 
    private:
     Tensor weights_;
