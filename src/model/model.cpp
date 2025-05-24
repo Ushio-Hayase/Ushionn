@@ -14,7 +14,12 @@ bool Sequential::build_model_graph(const Tensor& input_shape_template, bool trai
 {
     USHIONN_ASSERT(!layers_.empty(), "No layers in the model");
 
+    variant_pack_fwd_.clear();
+    variant_pack_bwd_.clear();
+
     std::vector<int64_t> input_shape(input_shape_template.get_shape());
+
+    input_tensor_template_attr_ = input_shape_template.create_graph_tensor_attributes(forward_graph_);
 
     intermediate_tensors_fwd_.resize(layers_.size());
 
@@ -126,9 +131,6 @@ Tensor Sequential::predict(const Tensor& x_input)
     USHIONN_ASSERT(bwd_graph_built_,
                    "Backward Graph is not built. Call build_model_graph() with appropriate input template first.");
 
-    variant_pack_fwd_.clear();
-    variant_pack_bwd_.clear();
-
     variant_pack_fwd_[input_tensor_template_attr_->get_uid()] = const_cast<void*>(x_input.get_device_ptr());
 
     cudaMalloc(&workspace_fwd_, workspace_size_fwd_);
@@ -136,13 +138,6 @@ Tensor Sequential::predict(const Tensor& x_input)
     auto execute_err = forward_graph_->execute(*cudnn_handle_, variant_pack_fwd_, workspace_fwd_);
 
     if (execute_err.is_bad()) USHIONN_LOG_FATAL("Forward graph Executing Error : " + execute_err.get_message());
-
-    std::cout << forward_graph_->print();
-
-    float* ptr = new float[3];
-    CUDA_CHECK(cudaMemcpy(ptr, intermediate_tensors_fwd_.back().get_mutable_device_ptr(), 12, cudaMemcpyDeviceToHost));
-    std::cout << ptr[0] << ' ' << ptr[1] << ' ' << ptr[2] << '\n';
-    delete[] ptr;
 
     return intermediate_tensors_fwd_.back();
 }

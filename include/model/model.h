@@ -77,7 +77,7 @@ class Sequential
     std::shared_ptr<fe::graph::Tensor_attributes> input_tensor_template_attr_;
     std::unique_ptr<Tensor> grad_output_;
 
-    bool fwd_graph_built_ = true;
+    bool fwd_graph_built_ = false;
     bool bwd_graph_built_ = true;
 
     fe::DataType_t data_type_ = fe::DataType_t::FLOAT;

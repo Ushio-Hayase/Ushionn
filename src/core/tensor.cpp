@@ -123,7 +123,7 @@ Tensor::Tensor(Tensor&& other) noexcept
     other.strides_.clear();
     other.uid_ = 0;
     other.is_virtual_ = false;  // 또는 다른 기본 상태
-    other.data_location_ = other.data_location_;
+    other.data_location_ = DataLocation::NONE;
     other.data_size_in_bytes_ = 0;
 }
 
