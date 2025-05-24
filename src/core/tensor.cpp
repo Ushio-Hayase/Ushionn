@@ -10,8 +10,8 @@ namespace ushionn
 
 // --- 생성자 구현 ---
 Tensor::Tensor(const std::vector<int64_t>& shape, cudnn_frontend::DataType_t data_type, bool is_virtual,
-               const std::string& name)
-    : shape_(shape), data_type_(data_type), is_virtual_(is_virtual), name_(name)
+               const std::string& name, const std::vector<int64_t>& stride)
+    : shape_(shape), data_type_(data_type), is_virtual_(is_virtual), name_(name), strides_(stride)
 {
     update_size_in_bytes_cache();
     data_location_ = DataLocation::NONE;
@@ -47,7 +47,7 @@ Tensor::Tensor(const Tensor& other)
       data_type_(other.data_type_),
       name_(other.name_ + "_copy"),  // 새 UID, 이름 변경
       is_virtual_(other.is_virtual_),
-      data_location_(DataLocation::NONE),  // 복사본은 일단 NONE
+      data_location_(other.data_location_),  // 복사본은 일단 NONE
       strides_dirty_(other.strides_dirty_),
       data_size_in_bytes_(other.data_size_in_bytes_)
 {
@@ -63,11 +63,6 @@ Tensor::Tensor(const Tensor& other)
         allocate_device_memory(data_size_in_bytes_);  // 내부에서 data_location_ 업데이트
         CUDA_CHECK(
             cudaMemcpy(d_data_ptr_.get(), other.get_device_ptr(), data_size_in_bytes_, cudaMemcpyDeviceToDevice));
-        // 원래 상태에 따라 data_location_ 조정
-        if (is_on_host() && is_on_device())
-        {
-            data_location_ = other.data_location_;
-        }
     }
 }
 
@@ -128,7 +123,7 @@ Tensor::Tensor(Tensor&& other) noexcept
     other.strides_.clear();
     other.uid_ = 0;
     other.is_virtual_ = false;  // 또는 다른 기본 상태
-    other.data_location_ = DataLocation::NONE;
+    other.data_location_ = other.data_location_;
     other.data_size_in_bytes_ = 0;
 }
 
@@ -267,7 +262,7 @@ void Tensor::allocate_device_memory(size_t bytes)
 }
 
 // --- 데이터 전송 및 동기화 ---
-void Tensor::to_device(cudaStream_t stream)
+void Tensor::to_device()
 {
     if (is_virtual_)
     {
@@ -283,14 +278,13 @@ void Tensor::to_device(cudaStream_t stream)
             break;
         case DataLocation::HOST:                          // CPU에만 데이터, GPU로 복사
             allocate_device_memory(data_size_in_bytes_);  // GPU 메모리 할당 (내부에서 data_location_ 변경)
-            USHIONN_ASSERT(h_data_ptr_ != nullptr, "Host data pointer is null in HOST_AHEAD state.");
+            USHIONN_ASSERT(h_data_ptr_ != nullptr, "Host data pointer is null in HOST state.");
             if (!d_data_ptr_)
                 allocate_device_memory(
                     data_size_in_bytes_);  // 만약을 위해 (정상적으론 HOST_AHEAD면 d_data_ptr_도 있어야함)
-            CUDA_CHECK(cudaMemcpyAsync(d_data_ptr_.get(), h_data_ptr_.get(), data_size_in_bytes_,
-                                       cudaMemcpyHostToDevice, stream));
-            if (stream == nullptr) CUDA_CHECK(cudaDeviceSynchronize());  // 동기 스트림이면 완료 대기
+            CUDA_CHECK(cudaMemcpy(d_data_ptr_.get(), h_data_ptr_.get(), data_size_in_bytes_, cudaMemcpyHostToDevice));
             data_location_ = DataLocation::DEVICE;
+            h_data_ptr_.reset();
             break;
         case DataLocation::DEVICE:  // 이미 GPU에만 있음 (최신)
             // 아무것도 안 함
@@ -298,7 +292,7 @@ void Tensor::to_device(cudaStream_t stream)
     }
 }
 
-void Tensor::to_host(cudaStream_t stream)
+void Tensor::to_host()
 {
     if (is_virtual_)
     {
@@ -314,12 +308,11 @@ void Tensor::to_host(cudaStream_t stream)
             break;
         case DataLocation::DEVICE:                      // GPU에만 데이터, CPU로 복사
             allocate_host_memory(data_size_in_bytes_);  // CPU 메모리 할당 (내부에서 data_location_ 변경)
-            USHIONN_ASSERT(d_data_ptr_ != nullptr, "Device data pointer is null in DEVICE_AHEAD state.");
+            USHIONN_ASSERT(d_data_ptr_ != nullptr, "Device data pointer is null in DEVICE state.");
             if (!h_data_ptr_) allocate_host_memory(data_size_in_bytes_);
-            CUDA_CHECK(cudaMemcpyAsync(h_data_ptr_.get(), d_data_ptr_.get(), data_size_in_bytes_,
-                                       cudaMemcpyDeviceToHost, stream));
-            if (stream == nullptr) CUDA_CHECK(cudaDeviceSynchronize());
+            CUDA_CHECK(cudaMemcpy(h_data_ptr_.get(), d_data_ptr_.get(), data_size_in_bytes_, cudaMemcpyDeviceToHost));
             data_location_ = DataLocation::HOST;
+            d_data_ptr_.reset();
             break;
         case DataLocation::HOST:
             break;

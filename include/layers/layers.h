@@ -30,7 +30,7 @@ class Layer
     // 순전파 그래프 구성 순수 가상 함수
     virtual std::shared_ptr<fe::graph::Tensor_attributes> add_forward_to_graph(
         std::shared_ptr<fe::graph::Graph>& graph,
-        const std::shared_ptr<fe::graph::Tensor_attributes>& input_tensor_graph_ref) = 0;
+        const std::shared_ptr<fe::graph::Tensor_attributes>& input_tensor_graph_ref, int64_t output_uid) = 0;
 
     // 역전파 그래프 구성 순수 가상 함수
     virtual std::shared_ptr<fe::graph::Tensor_attributes> add_backward_to_graph(
@@ -44,6 +44,8 @@ class Layer
     virtual std::vector<Tensor*> get_parameters() = 0;
     virtual std::vector<Tensor*> get_gradients() = 0;                          // 파라미터에 대한 그래디언트
     virtual void initialize_parameters_norm(unsigned long long seed = 0) = 0;  // 파라미터 초기화
+
+    virtual std::vector<int64_t> get_output_shape(std::vector<int64_t> input_dims) const = 0;
 
    protected:
     std::string name_;
@@ -68,7 +70,7 @@ class DenseLayer : public Layer
     /// @return 출력 텐서 속성 shared 포인터
     std::shared_ptr<fe::graph::Tensor_attributes> add_forward_to_graph(
         std::shared_ptr<fe::graph::Graph>& graph,
-        const std::shared_ptr<fe::graph::Tensor_attributes>& input_tensor_graph_ref) override;
+        const std::shared_ptr<fe::graph::Tensor_attributes>& input_tensor_graph_ref, int64_t output_uid) override;
 
     /// @brief 그래프에 역전파 작업을 추가합니다
     /// @param[in] graph 그래프 shared 포인터
@@ -91,6 +93,8 @@ class DenseLayer : public Layer
     std::vector<Tensor*> get_gradients() override;
 
     void initialize_parameters_norm(unsigned long long seed = 0);
+
+    std::vector<int64_t> get_output_shape(std::vector<int64_t> input_dims) const override;
 
    private:
     Tensor weights_;

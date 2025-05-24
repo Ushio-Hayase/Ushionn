@@ -15,7 +15,7 @@
 namespace ushionn
 {
 // 정적 멤버 초기화 (generate_unique_id_internal용)
-static std::atomic<int64_t> tensor_uid_counter = 1;
+static std::atomic<int64_t> tensor_uid_counter = 1000;
 // CUDA 메모리 해제를 위한 커스텀 Deleter
 struct CudaDeleter
 {
@@ -55,7 +55,8 @@ class Tensor
     Tensor() = default;
 
     Tensor(const std::vector<int64_t>& shape, cudnn_frontend::DataType_t data_type = cudnn_frontend::DataType_t::FLOAT,
-           bool is_virtual = false, const std::string& name = "");
+           bool is_virtual = false, const std::string& name = "",
+           const std::vector<int64_t>& stride = std::vector<int64_t>());
 
     // Host 데이터로 생성 (데이터는 즉시 CPU에 위치)
     Tensor(const std::vector<int64_t>& shape,
@@ -120,12 +121,10 @@ class Tensor
     /* 데이터 전송 및 동기화 */
 
     /// @brief 데이터를 CPU에서 GPU로 옮김
-    /// @param[in] stream cudaStream 포인터
-    void to_device(cudaStream_t stream = nullptr);  // 데이터를 GPU로 (최신 상태로 만듦)
+    void to_device();  // 데이터를 GPU로 (최신 상태로 만듦)
 
     /// @brief 데이터를 GPU에서 CPU로 옮김
-    /// @param[in] stream cudaStream 포인터
-    void to_host(cudaStream_t stream = nullptr);  // 데이터를 CPU로 (최신 상태로 만듦)
+    void to_host();  // 데이터를 CPU로 (최신 상태로 만듦)
 
     /// @brief 외부 CPU측 데이터로 텐서의 메모리 채우기
     /// @param[in] host_data_ptr 복사할 위치의 포인터

@@ -27,6 +27,7 @@ class Sequential
         forward_graph_->set_dynamic_shape_enabled(true).set_compute_data_type(data_type_);
         backward_graph_->set_dynamic_shape_enabled(true).set_compute_data_type(data_type_);
         cudnnCreate(cudnn_handle_.get());
+
     };  // cuDNN 핸들 주입
     virtual ~Sequential() = default;
 
@@ -59,24 +60,25 @@ class Sequential
 
     std::vector<Tensor> intermediate_tensors_fwd_;  // 각 레이어의 출력을 담을 실제 Tensor 객체들
 
-    std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*> variant_pack_fwd_;
+    std::unordered_map<int64_t, void*> variant_pack_fwd_;
 
     /* 역전파 변수 */
 
     std::shared_ptr<fe::graph::Graph> backward_graph_;
 
-    std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*> variant_pack_bwd_;
+    std::unordered_map<int64_t, void*> variant_pack_bwd_;
 
     void* workspace_fwd_ = nullptr;
-    size_t workspace_size_fwd_ = 0;
+    int64_t workspace_size_fwd_ = 0;
 
     void* workspace_bwd_ = nullptr;
-    size_t workspace_size_bwd_ = 0;
+    int64_t workspace_size_bwd_ = 0;
 
-    Tensor model_output_;
+    std::shared_ptr<fe::graph::Tensor_attributes> input_tensor_template_attr_;
+    std::unique_ptr<Tensor> grad_output_;
 
-    bool fwd_graph_built_ = false;
-    bool bwd_graph_built_ = false;
+    bool fwd_graph_built_ = true;
+    bool bwd_graph_built_ = true;
 
     fe::DataType_t data_type_ = fe::DataType_t::FLOAT;
 };

@@ -73,6 +73,8 @@ class ModelTest : public ::testing::Test
 
 TEST_F(ModelTest, SingleDenseLayerNoActivation)
 {
+    fe::isLoggingEnabled() = true;
+
     // 1. 모델 구성
     ushionn::model::Sequential model;  // 모델에 cudnnHandle 전달
     // ---> [내가 채울 부분] 아래 DenseLayer 생성자 인자를 실제 구현에 맞게 수정.
