@@ -14,7 +14,9 @@ std::shared_ptr<fe::graph::Tensor_attributes> DenseLayer::add_forward_to_graph(
                              .set_mode(fe::PointwiseMode_t::ADD);
 
     auto weights_tensor_attributes = weights_.create_graph_tensor_attributes(graph);
+    weights_tensor_attributes->set_name(name_ + "_weights");
     auto bias_tensor_attributes = bias_.create_graph_tensor_attributes(graph);
+    bias_tensor_attributes->set_name(name_ + "_bias");
 
     // 가중치 행렬곱
     auto weights_output_tensor_attributes =

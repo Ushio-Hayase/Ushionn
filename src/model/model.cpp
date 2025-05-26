@@ -176,7 +176,7 @@ bool Sequential::build_graph(std::shared_ptr<fe::graph::Graph> graph)
         return false;
     }
 
-    auto build_plans_err = graph->build_plans(*cudnn_handle_, fe::BuildPlanPolicy_t::HEURISTICS_CHOICE);
+    auto build_plans_err = graph->build_plans(*cudnn_handle_, fe::BuildPlanPolicy_t::ALL);
 
     if (build_plans_err.is_bad())
     {

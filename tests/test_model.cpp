@@ -152,8 +152,112 @@ TEST_F(ModelTest, SingleDenseLayerNoActivation)
     }
 }
 
+TEST_F(ModelTest, MultiDenseLayerNoActivation)
+{
+    fe::isLoggingEnabled() = true;
+
+    // 1. 모델 구성
+    ushionn::model::Sequential model;  // 모델에 cudnnHandle 전달
+    // ---> [내가 채울 부분] 아래 DenseLayer 생성자 인자를 실제 구현에 맞게 수정.
+    //      (input_size, output_size, name, has_bias=false 등)
+    //      예: auto dense_layer = std::make_unique<ushionn::DenseLayer>(2, 3, "dense1", false); // 입력 2, 출력 3, bias
+    //      없음
+    int64_t batch_size = 1;
+    int64_t input_features = 2;
+    int64_t output_features1 = 3;
+    int64_t output_features2 = 4;
+    auto dense_layer1 =
+        std::make_unique<ushionn::nn::DenseLayer>(batch_size, input_features, output_features1, "dense1");
+    auto dense_layer2 =
+        std::make_unique<ushionn::nn::DenseLayer>(batch_size, output_features1, output_features2, "dense2");
+
+    // 레이어의 파라미터(가중치)를 미리 정의된 값으로 설정
+    std::vector<ushionn::Tensor*> params1 = dense_layer1->get_parameters();
+    ushionn::Tensor& weights1 = *params1[0];
+    ushionn::Tensor& bias1 = *params1[1];
+
+    std::vector<float> W_host_data1 = {1.0f, 2.0f, 3.0f,
+                                       4.0f, 5.0f, 6.0f};  // Shape: (input_features, output_features) = (2, 3)
+
+    std::vector<float> b_host_data1 = {1.f, 1.f, 1.f};
+    weights1 = ushionn::Tensor({batch_size, input_features, output_features1}, W_host_data1.data(),
+                               W_host_data1.size() * sizeof(float));
+    weights1.to_device();  // 가중치를 GPU로
+
+    bias1 =
+        ushionn::Tensor({batch_size, 1, output_features1}, b_host_data1.data(), b_host_data1.size() * sizeof(float));
+    bias1.to_device();
+
+    model.add_layer(std::move(dense_layer1));
+
+    /* ------ */
+
+    std::vector<ushionn::Tensor*> params2 = dense_layer2->get_parameters();
+    ushionn::Tensor& weights2 = *params2[0];
+    ushionn::Tensor& bias2 = *params2[1];
+
+    std::vector<float> W_host_data2 = {
+        1.0f, 2.0f, 3.0f, 4.0f,  5.0f, 6.0f,
+        7.0f, 8.0f, 9.0f, 10.0f, 11.f, 12.f};  // Shape: (input_features, output_features) = (3, 4)
+    std::vector<float> b_host_data2 = {1.f, 1.f, 1.f, 1.f};
+    weights2 = ushionn::Tensor({batch_size, output_features1, output_features2}, W_host_data2.data(),
+                               W_host_data2.size() * sizeof(float));
+    weights2.to_device();  // 가중치를 GPU로
+
+    bias2 =
+        ushionn::Tensor({batch_size, 1, output_features2}, b_host_data2.data(), b_host_data2.size() * sizeof(float));
+    bias2.to_device();
+
+    model.add_layer(std::move(dense_layer2));
+
+    // 2. 입력 데이터 준비
+
+    std::vector<float> X_host_data = {10.0f, 20.0f};  // Shape: (batch_size, input_features) = (1, 2)
+    ushionn::Tensor X_input({batch_size, 1, input_features}, X_host_data.data(), X_host_data.size() * sizeof(float));
+    X_input.to_device();  // 입력 데이터를 GPU로
+
+    // 3. 모델 그래프 빌드 (입력 템플릿 사용)
+    //    model_input_template은 X_input과 동일한 shape, dtype 등을 가져야 함.
+    ushionn::Tensor model_input_template({batch_size, 1, input_features}, fe::DataType_t::FLOAT, false,
+                                         "graph_input_template");
+    ASSERT_TRUE(model.build_model_graph(model_input_template));
+
+    // 4. 순전파 실행
+    ushionn::Tensor Y_pred = model.predict(X_input);
+
+    std::cout << "predict complete" << std::endl;
+
+    // 5. 결과 검증
+    ASSERT_TRUE(Y_pred.is_on_device() ||
+                Y_pred.get_data_location() == ushionn::Tensor::DataLocation::DEVICE);  // 결과는 GPU에 있어야 함
+    ASSERT_EQ(Y_pred.get_shape(), std::vector<int64_t>({batch_size, 1, output_features2}));
+
+    Y_pred.to_host();  // 결과를 CPU로 가져옴
+    const float* Y_pred_host_data = static_cast<const float*>(Y_pred.get_host_ptr());
+    ASSERT_NE(Y_pred_host_data, nullptr);
+
+    // 수동 계산: Z = XW
+    // X (1x2) = [10, 20]
+    // W (2x3) = [[1, 2, 3],
+    //            [4, 5, 6]]
+    // Z (1x3) = [ (10*1 + 20*4), (10*2 + 20*5), (10*3 + 20*6) ]
+    //         = [ (10 + 80),   (20 + 100),  (30 + 120)  ]
+    //         = [ 90,          120,         150         ]
+    std::vector<float> Y_expected_data = {91.0f, 121.0f, 151.0f};
+
+    PrintTensorData("Input X", X_input);
+    PrintTensorData("Weights1 W", weights1);
+    PrintTensorData("Weights2 W", weights2);
+    PrintTensorData("Predicted Y", Y_pred);
+
+    for (size_t i = 0; i < Y_expected_data.size(); ++i)
+    {
+        EXPECT_TRUE(AreFloatsClose(Y_pred_host_data[i], Y_expected_data[i]))
+            << "Mismatch at index " << i << ": expected " << Y_expected_data[i] << ", got " << Y_pred_host_data[i];
+    }
+}
+
 // ---> [내가 채울 부분] 추가 테스트 케이스 작성:
-// 1.  Dense 레이어 1개 + Bias 포함된 경우
 // 2.  Dense 레이어 2개 쌓은 경우 (활성화 함수 없이)
 // 3.  (구현되었다면) ReLU 같은 활성화 함수 레이어를 포함한 경우
 // 4.  배치 크기가 1보다 큰 경우
