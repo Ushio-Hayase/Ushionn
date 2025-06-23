@@ -58,11 +58,31 @@ void handleErrorInternal(const char* file, int line, const char* func_name, cons
         ushionn::internal::handleErrorInternal(__FILE__, __LINE__, __func__, error_oss_fatal.str(), true); \
     } while (0)
 
+enum class DataType
+{
+    FLOAT32,
+    FLOAT64,
+};
+
 namespace utils
 {  // 순수 C++ 유틸리티 함수 (선언)
 
 // 바이트 크기를 읽기 쉬운 문자열로 변환 (구현은 common.cpp에)
 std::string formatBytes(size_t bytes);
+
+template <typename T>
+DataType primitiveTypeToDataType()
+{
+    switch (typeid(T))
+    {
+        case typeid(float):
+            return DataType::FLOAT32;
+        case typeid(double):
+            return DataType::FLOAT64;
+        default:
+            USHIONN_LOG_FATAL("Unkown type received");
+    }
+}
 
 }  // namespace utils
 }  // namespace ushionn

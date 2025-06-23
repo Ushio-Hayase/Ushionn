@@ -10,10 +10,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-set(CUDNN_FRONTEND_LOG_INFO 1)
-set(CUDNN_LOGLEVEL_DBG 3)
-set(CUDNN_FRONTEND_LOG_FILE "log.txt")
-
 find_package(CUDA REQUIRED)
 
 # CUDA 라이브러리 출력
@@ -22,11 +18,6 @@ message(STATUS "CUDA Libraries: ${CUDA_LIBRARIES}") # cudart 등
 message(STATUS "CUDA Include DIRS: ${CUDA_INCLUDE_DIRS}")
 
 add_subdirectory("lib")
-
-# cuDNN 출력
-message(STATUS "cuDNN: ${CUDNN_INCLUDE_DIRS}")
-message(STATUS "cuDNN Libraries: ${CUDNN_LIBRARIES}")
-message(STATUS "cuDNN Frontend Headers: ${CUDNN_FRONTEND_INCLUDE_DIRS}")
 
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
@@ -46,8 +37,6 @@ add_library(ushionn STATIC ${USHIONN_SOURCES})
 
 target_include_directories(ushionn PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    ${CUDNN_INCLUDE_DIRS}
-    ${CUDNN_FRONTEND_INCLUDE_DIRS}
     ${CUDA_INCLUDE_DIRS})
 
 
@@ -58,11 +47,10 @@ FetchContent_MakeAvailable(googletest)
 
 target_link_libraries(ushionn
     PUBLIC # 라이브러리를 사용하는 다른 타겟들도 이 라이브러리들을 링크해야 함
-    ${CUDNN_LIBRARIES}
     ${CUDA_LIBRARIES} # cudart
     # CUDA::cublas 타겟 사용 (CMake 3.9+). 하위 버전은 ${CUDAToolkit_cublas_LIBRARY}
     $<$<TARGET_EXISTS:CUDA::cublas>:CUDA::cublas>
-    $<$<NOT:$<TARGET_EXISTS:CUDA::cublas>>:${CUDAToolkit_cublas_LIBRARY}> # Fallback for older CMake
+    $<$<NOT:$<TARGET_EXISTS:CUDA::cublas>>:${CUDAToolkit_cublas_LIBRARY}>
     PRIVATE
     # 라이브러리 내부적으로만 필요한 링크
 )
