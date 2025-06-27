@@ -1,15 +1,11 @@
 #pragma once
 
-#include <cudnn_frontend.h>
-
 #include <memory>  // for std::shared_ptr
 #include <random>
 #include <string>
 #include <vector>
 
 #include "core/tensor.h"
-
-namespace fe = cudnn_frontend;
 
 namespace ushionn
 {

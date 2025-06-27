@@ -73,14 +73,17 @@ std::string formatBytes(size_t bytes);
 template <typename T>
 DataType primitiveTypeToDataType()
 {
-    switch (typeid(T))
+    if constexpr (std::is_same_v<T, float>)
     {
-        case typeid(float):
-            return DataType::FLOAT32;
-        case typeid(double):
-            return DataType::FLOAT64;
-        default:
-            USHIONN_LOG_FATAL("Unkown type received");
+        return DataType::FLOAT32;
+    }
+    else if constexpr (std::is_same_v<T, double>)
+    {
+        return DataType::FLOAT64;
+    }
+    else
+    {
+        USHIONN_LOG_FATAL("Unknown type received");
     }
 }
 

@@ -26,9 +26,6 @@ include_directories(
 set(USHIONN_SOURCES
     src/core/tensor.cpp
     src/core/common.cpp
-    src/layers/activation.cpp
-    src/layers/layers.cpp
-    src/model/model.cpp
     src/cuda/kernels.cu
     src/cuda/cuda_utils.cu
     src/cuda/tensor.cu

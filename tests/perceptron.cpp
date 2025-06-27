@@ -1,3 +1,5 @@
+#include <gtest/gtest.h>
+
 #include <iostream>
 
 float dot(float* v1, float* v2, int len)
@@ -34,7 +36,7 @@ void train(float* w, float* x, float t, float e, int len)
 constexpr int DATA_NUMS = 4;
 constexpr int WEIGHT_NUMS = 3;
 
-int main()
+TEST(PERSEPTRON, test)
 {
     float e = 0.1;
 

@@ -9,18 +9,17 @@ namespace ushionn
 {
 
 // --- 생성자 구현 ---
-Tensor::Tensor(std::vector<size_t> shape, DataType type) : cpu_data_ptr_(nullptr, type)
+Tensor::Tensor(std::vector<size_t> shape, DataType type) : cpu_data_ptr_(nullptr, type), shape_(shape)
 {
     cublasCreate(&cublas_handle_);
     cudaThreadSynchronize();
-    std::copy(shape.begin(), shape.end(), shape_);
 
     shape_size_ = shape_.size();
     type_ = type;
     if (type_ == DataType::FLOAT32)
-        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0) * sizeof(float);
+        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0ULL) * sizeof(float);
     else if (type_ == DataType::FLOAT64)
-        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0) * sizeof(double);
+        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0ULL) * sizeof(double);
 }
 
 template <typename T>
@@ -42,20 +41,18 @@ Tensor::Tensor(std::vector<size_t> shape, const T* ptr)
     location_ = DataLocation::HOST;
 }
 
-Tensor::Tensor(std::vector<size_t> shape, void* gpu_ptr, DataType type) : cpu_data_ptr_(nullptr, type)
+Tensor::Tensor(std::vector<size_t> shape, void* gpu_ptr, DataType type) : cpu_data_ptr_(nullptr, type), shape_(shape)
 {
     cublasCreate(&cublas_handle_);
     cudaThreadSynchronize();
-
-    std::copy(shape.begin(), shape.end(), shape_);
 
     shape_size_ = shape_.size();
     type_ = type;
 
     if (type == DataType::FLOAT32)
-        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0) * sizeof(float);
+        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0ULL) * sizeof(float);
     else if (type == DataType::FLOAT64)
-        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0) * sizeof(double);
+        total_bytes_ = std::accumulate(shape.begin(), shape.end(), 0ULL) * sizeof(double);
 
     location_ = DataLocation::DEVICE;
 
@@ -111,9 +108,9 @@ Tensor Tensor::operator*(const Tensor& other)
 template <typename T>
 Tensor Tensor::operator*(const T& scalar)
 {
-    static_assert(std::is_arithmetic_v<T>, "스칼라는 숫자 타입이여야 합니다.")
+    static_assert(std::is_arithmetic_v<T>, "스칼라는 숫자 타입이여야 합니다.");
 
-        USHIONN_ASSERT(location_ != DataLocation::NONE, "텐서가 할당되지 않았습니다.");
+    USHIONN_ASSERT(location_ != DataLocation::NONE, "텐서가 할당되지 않았습니다.");
 
     Tensor result(this->shape_, type_);
     result.allocate_cpu_mem(total_bytes_);
@@ -139,7 +136,7 @@ void Tensor::allocate_gpu_mem(size_t total_bytes)
 {
     total_bytes_ = total_bytes;
 
-    USHIONN_WARN(gpu_data_ptr_, "Gpu memory is already allocated. Ignore the command");
+    if (!gpu_data_ptr_) USHIONN_WARN("Gpu memory is already allocated. Ignore the command");
 
     if (!gpu_data_ptr_)
     {
@@ -162,7 +159,7 @@ void Tensor::allocate_cpu_mem(size_t total_bytes)
 {
     total_bytes_ = total_bytes;
 
-    USHIONN_WARN(cpu_data_ptr_, "Cpu memory is already allocated. Ignore the command");
+    if (!cpu_data_ptr_) USHIONN_WARN("Cpu memory is already allocated. Ignore the command");
 
     if (!cpu_data_ptr_)
     {
@@ -238,8 +235,8 @@ void Tensor::multiply(const T& b, Tensor& r)
         {
             total_elements *= dim;
         }
-
-        USHIONN_WARN(typeid(T) == typeid(float), "텐서와 주어진 스칼라의 타입이 일치하지 않아 캐스팅을 진행합니다.");
+        if (typeid(T) != typeid(float))
+            USHIONN_WARN("텐서와 주어진 스칼라의 타입이 일치하지 않아 캐스팅을 진행합니다.");
 
         auto state = cublasSscal(r.cublas_handle_, total_elements, &b, static_cast<float*>(gpu_data_ptr_.get()), 1);
 
@@ -313,7 +310,8 @@ void Tensor::schalar_multiply_cpu(const T& b, Tensor& r)
     // 타입별로 계산 수행
     if (type_ == DataType::FLOAT32)
     {
-        USHIONN_WARN(typeid(T) == typeid(float), "텐서와 주어진 스칼라의 타입이 일치하지 않아 캐스팅을 진행합니다.");
+        if (typeid(T) != typeid(float))
+            USHIONN_WARN("텐서와 주어진 스칼라의 타입이 일치하지 않아 캐스팅을 진행합니다.");
 
         const float* a_data = static_cast<const float*>(cpu_data_ptr_.get());
         float* r_data = static_cast<float*>(r.cpu_data_ptr_.get());

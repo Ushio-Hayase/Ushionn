@@ -1,16 +1,11 @@
 #pragma once
 
-#include <cudnn_frontend.h>
-
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
 #include "core/tensor.h"
 #include "layers/layers.h"
-
-namespace fe = cudnn_frontend;
-
 namespace ushionn
 {
 namespace model
