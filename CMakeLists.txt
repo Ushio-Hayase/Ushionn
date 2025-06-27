@@ -31,6 +31,7 @@ set(USHIONN_SOURCES
     src/model/model.cpp
     src/cuda/kernels.cu
     src/cuda/cuda_utils.cu
+    src/cuda/tensor.cu
 )
 
 add_library(ushionn STATIC ${USHIONN_SOURCES})
